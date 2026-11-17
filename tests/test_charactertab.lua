@@ -121,6 +121,7 @@ H.load("Predict.lua", ns)
 H.load("Gear.lua", ns)
 H.load("Items.lua", ns)
 H.load("Loadout.lua", ns)
+H.load("Body.lua", ns)
 H.load("CharacterTab.lua", ns)
 local Tab = ns.CharacterTab
 ns.db = ns.Database.Load(nil)
@@ -276,4 +277,73 @@ H.test("tab: clicking an empty-handed slot opens a picker of bag items that fit"
 	ns.db.plan = { [17] = LINKS.gaze }
 	Tab.Refresh()
 	H.eq(next(ns.db.plan), nil, "no impossible staff plus off-hand plan")
+end)
+
+H.test("tab: a warrior sees weapon strikes, stat results once, and the attack power group", function()
+	local function item(link, loc, lines)
+		return { link = link, loc = loc, name = link, bonus = ns.Gear.ParseBonus(lines), stats = ns.Gear.ParseStats(lines) }
+	end
+	local sword = item("Old Sword", "INVTYPE_2HWEAPON", { "40 - 60 Damage", "Speed 3.50" })
+	local axe = item("New Axe", "INVTYPE_2HWEAPON", { "50 - 80 Damage", "+10 Strength", "45 Armor", "Speed 3.60" })
+	local snap = {
+		class = "WARRIOR", level = 20, stats = { str = 100, agi = 50, sta = 80 }, ap = 200,
+		melee = { base = 100, bonus = 0, pct = 1 }, health = 1000, mana = 0, armor = 1500, dodge = 7.5,
+		fn = { apFor = function(stat, v) return stat == 1 and v * 2 or 0 end, hpPerSta = 10, apPerDps = 14 },
+	}
+	local state = { spells = { { spellID = 21553, name = "Mortal Strike", values = { 50, 10, 160 } } } }
+	local lines = Tab.Build({ state = state, plan = { [16] = axe }, worn = { [16] = sword }, tracked = { "stat:armor" },
+		playerStats = { str = 100, armor = 1500 }, snap = snap })
+	local spells = kinds(lines, "spell")
+	H.eq(spells[1].row.name, "Mortal Strike")
+	H.eq(spells[1].row.change, 20)
+	local labels = {}
+	for _, l in ipairs(kinds(lines, "stat")) do
+		labels[#labels + 1] = l.label
+	end
+	H.eq(table.concat(labels, ","), "Strength", "armor is shown once, as a result line")
+	local derived = kinds(lines, "derived")
+	H.eq(derived[1].row.name, "Attack power")
+	H.eq(derived[1].row.change, 20)
+	H.eq(derived[2].row.name, "Armor")
+	H.truthy(derived[2].tracked, "chosen for item tooltips")
+	H.eq(#derived, 2, "unchanged health and dodge wait behind Show all")
+	local toggles = kinds(lines, "toggle")
+	H.eq(toggles[#toggles].text, ns.L.TAB_SHOW_ALL:format(2))
+	-- Nothing planned (a new character): every stat line is there to choose.
+	local empty = Tab.Build({ state = state, plan = {}, worn = { [16] = sword }, tracked = {}, playerStats = {}, snap = snap })
+	local names = {}
+	for _, l in ipairs(kinds(empty, "derived")) do
+		names[#names + 1] = l.row.name
+	end
+	H.eq(table.concat(names, ","), "Health,Attack power,Armor,Dodge chance")
+	local open = Tab.Build({ state = state, plan = { [16] = axe }, worn = { [16] = sword }, tracked = {},
+		playerStats = {}, snap = snap, showAll = true })
+	H.eq(#kinds(open, "derived"), 4, "Show all lists every line")
+	local texts = {}
+	for _, t in ipairs(kinds(lines, "text")) do
+		texts[#texts + 1] = t.text
+	end
+	local all = table.concat(texts, "\n")
+	H.truthy(all:find("Attack power and weapon damage:|r Mortal Strike", 1, true), all)
+	H.truthy(not all:find("every spell below", 1, true), "no spell-damage line for a warrior")
+end)
+
+H.test("compat: the live snapshot reads the game's damage and stat numbers", function()
+	UnitClass = function() return "Warrior", "WARRIOR", 1 end
+	UnitAttackPower = function() return 180, 20, 0 end
+	UnitDamage = function() return 50.5, 70.5, nil, nil, 0, 0, 1.1 end
+	UnitRangedDamage = function() return 0, 0, 0, 0, 0, 1 end
+	UnitHealthMax = function() return 900 end
+	GetAttackPowerForStat = function(stat, value) return stat == 1 and value * 2 or 0 end
+	local snap = ns.Compat.Snapshot()
+	H.eq(snap.class, "WARRIOR")
+	H.eq(snap.ap, 200)
+	H.near(snap.melee.base, 55, 0.0001, "(50.5 + 70.5) / 2 / 1.1")
+	H.eq(snap.melee.pct, 1.1)
+	H.eq(snap.ranged, nil, "no ranged weapon")
+	H.eq(snap.health, 900)
+	H.eq(snap.stats.int, 112)
+	H.eq(snap.fn.apFor(1, 10), 20)
+	H.eq(snap.fn.critFor, nil, "a missing game function stays missing")
+	UnitClass, UnitAttackPower, UnitDamage, UnitRangedDamage, UnitHealthMax, GetAttackPowerForStat = nil
 end)

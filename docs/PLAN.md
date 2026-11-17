@@ -37,6 +37,15 @@ Changes in v5, from Ryan:
   looks are not the point); the changes list sits between the slot columns, so the game's
   right pane can stay open or closed. Click a slot to pick from fitting bag items. Right-click
   in the bags stays the game's equip; the plan corrects itself to what is worn.
+- v6, all classes (0.4.0-alpha.1): abilities whose tooltip number grows with attack power
+  (Victory Rush, Revenge) come from the game data like spells do. Weapon strikes (Sinister
+  Strike, Mortal Strike, Heroic Strike, Auto Shot, Aimed Shot...) show their average hit,
+  worked out with the game's own weapon formula from the weapon, attack power and the strike's
+  game data; the formula is first checked against the game's main-hand (or ranged) damage for
+  the worn weapon, and strikes are left out if it does not match (druid forms, for example).
+  "What you get" stat lines (health, mana, attack power, crit, armor, physical damage reduction,
+  defense, dodge, parry, block) are worked out with the game's own "what is a stat worth"
+  functions, and each can be chosen, like a spell, to show on items when Alt is held.
 - Left out for now: an automatic "best gear" button (it would make upgrade decisions) and several
   saved loadouts. Set bonuses and tank/melee stat lines fit here later.
 
@@ -86,6 +95,7 @@ Revised phases (replace section 7's table):
 | 1. Skeleton + reading | Tooling, action-bar and macro spells, tooltip number reader, learning. | Built (0.1.0-alpha.1) |
 | 2. Alt-hover | Generated `SpellData.lua`, item bonus reader, pairing, Alt tooltip block, hint line; 6 spells by casts, icons. | Built (0.2.0-alpha.2); Heal matched in game |
 | 3. Character tab | SpellDelta tab on the character screen (v5): planned loadout in gear slots, bag picker per slot, spell and stat Delta, "What gear bonuses do" box, choosing the 6 hover spells (stat lines later). Learned spells at your current rank only; future ranks and talent-granted spells belong to the Talent tester. | Checked in game (0.3.0-alpha.2, level 34 priest) |
+| 3b. All classes | Attack-power abilities, weapon strikes, "What you get" stat lines (choosable for the Alt tooltip), attack-power groups (v6). | Built (0.4.0-alpha.5), in-game check pending |
 | 4. Talent effects | Talent tables are already exported (Trait*); talent modifiers on spell numbers, talent tooltip line. | |
 | 5. Talent tester | As in 1d. | |
 | 6. Release | All classes labelled unverified, README, VALIDATION.md, release on Ryan's OK. | |
@@ -96,8 +106,20 @@ Known limits of phase 2, with Ryan's notes (2026-11-16):
   so that part of the change comes out up to the talent's percent too small. Fix candidate, not
   waiting for phase 4: read each spell's own multiplier by comparing its live number with the game
   data's base value plus coefficient times bonus.
-- Only spell damage and healing are modelled. Every class's stats (attack power, crit, haste, and
-  so on) are required before release; spell and healing are enough for the alpha.
+- Since 0.4.0-alpha.1 every class's main numbers are modelled (attack power, weapon strikes,
+  off-hand and both-hand strikes, attack-power shares, block value, health, avoidance). Rule
+  (Ryan, 2026-11-16): an ability is in when gear changes its number, the same as a spell; it
+  is out when gear cannot change it (Shield Wall, Levitate, Resurrection). Since 0.4.0-alpha.5
+  (Ryan's choice): finishers whose text says "increased by Attack Power" without saying how much
+  (Eviscerate, Rupture, Garrote, Rip, Ferocious Bite) and Shield of Righteousness use numbers
+  measured by players (wowsims SoD simulator, Measured.lua), marked "*" with a footnote;
+  Between the Eyes stays out (the simulator marks its share untested). Druid Cat and Bear Form
+  strikes show while in that form: the weapon counts only if "weapon DPS x form speed" matches
+  the game's form damage, otherwise the weapon is left out (simulator rule, marked "*"). Known
+  gaps: talents
+  that change a strike's own damage (only talents raising all physical damage are counted);
+  stance-dependent tooltip numbers use the no-stance value (Revenge); percentage talents on
+  stats (for example +5% Stamina); attack power that only counts against some foes.
 - Set bonuses are ignored. Wanted later; not needed for testing now.
 
 Changes in v2, from Ryan's feedback:

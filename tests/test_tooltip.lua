@@ -28,6 +28,8 @@ ns.Compat = {
 	BagLinks = function() return { LINKS.mace, LINKS.gaze, LINKS.boots } end,
 	IsAltKeyDown = function() return alt end,
 	GetSpellIcon = function(id) return id == 6063 and 135913 or nil end,
+	ItemClass = function() return nil end,
+	Snapshot = function() return nil end,
 }
 ns.db = {}
 ns.lastState = {
@@ -40,6 +42,8 @@ ns.lastState = {
 }
 
 H.load("Items.lua", ns)
+H.load("Loadout.lua", ns)
+H.load("Body.lua", ns)
 
 -- Client globals the tooltip module touches at Init and when a tooltip is filled.
 local postCall
@@ -100,11 +104,17 @@ H.test("tooltip: the spells cast most come first", function()
 	ns.db.casts = {}
 end)
 
-H.test("tooltip: items that change no spell bonus, and the equipped staff, add nothing", function()
+H.test("tooltip: an item that changes nothing says so; the equipped staff adds nothing", function()
 	alt = true
 	GameTooltip = FakeTooltip(LINKS.boots)
 	postCall(GameTooltip)
-	H.eq(#GameTooltip.lines, 0)
+	H.eq(#GameTooltip.lines, 3)
+	H.eq(GameTooltip.lines[3], ns.L.TIP_NO_CHANGE)
+	alt = false
+	GameTooltip = FakeTooltip(LINKS.boots)
+	postCall(GameTooltip)
+	H.eq(GameTooltip.lines[1], ns.L.TIP_HINT, "the Alt hint shows too")
+	alt = true
 	GameTooltip = FakeTooltip(LINKS.staff)
 	postCall(GameTooltip)
 	H.eq(#GameTooltip.lines, 0)
@@ -129,4 +139,32 @@ H.test("tooltip: an item not loaded yet is retried, not remembered as empty", fu
 	GameTooltip = FakeTooltip(link)
 	postCall(GameTooltip)
 	H.truthy(#GameTooltip.lines > 0, "shown once loaded")
+end)
+
+H.test("tooltip: a chosen spell shows even when the item doesn't change it", function()
+	alt = true
+	ns.db.tracked = { "Heal" }
+	Tooltip.Invalidate()
+	GameTooltip = FakeTooltip(LINKS.boots)
+	postCall(GameTooltip)
+	H.eq(GameTooltip.lines[3], "  |T135913:0|t Heal | 629 to 629  (+0)")
+	ns.db.tracked = {}
+	Tooltip.Invalidate()
+end)
+
+H.test("tooltip: a chosen stat line shows on items that change it", function()
+	alt = true
+	ns.Compat.Snapshot = function()
+		return { stats = { sta = 80 }, health = 1000, mana = 500, fn = { hpPerSta = 10, staBreak = 20 } }
+	end
+	ns.db.tracked = { "stat:health" }
+	Tooltip.Invalidate()
+	GameTooltip = FakeTooltip(LINKS.boots)
+	postCall(GameTooltip)
+	local L = GameTooltip.lines
+	H.eq(L[2], "Spells - in an empty slot")
+	H.eq(L[3], "  Health | 1000 to 1050  (+50)")
+	ns.db.tracked = {}
+	ns.Compat.Snapshot = function() return nil end
+	Tooltip.Invalidate()
 end)

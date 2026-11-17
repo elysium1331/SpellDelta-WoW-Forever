@@ -7,7 +7,7 @@ SpellDelta answers one question: *what does this talent, or this item, change ab
 the spells I actually use?* It reads the game's own tooltip numbers for the spells on
 your action bars, so you see real numbers and no upgrade scores.
 
-**Status:** 0.3.0-alpha.2, phase 3 of the plan in [docs/PLAN.md](docs/PLAN.md).
+**Status:** 0.4.0-alpha.5, phase 3 of the plan in [docs/PLAN.md](docs/PLAN.md).
 Not released yet.
 
 SpellDelta is an unofficial community addon. Blizzard Entertainment did not make or
@@ -36,14 +36,19 @@ The 6 are the spells you cast most (SpellDelta counts them as you play); until i
 you cast, the biggest changes.
 
 No setup and no commands. SpellDelta reads your spells' current tooltip numbers itself,
-and knows from the game data how much each number grows per point of spell damage or
-healing. It shows numbers only; it never tells you whether to Need or Greed.
+and knows from the game data how much each number grows per point of spell damage,
+healing or attack power. Weapon strikes (Sinister Strike, Mortal Strike, Auto Shot...)
+show their average hit, worked out from your weapon and attack power with the game's own
+weapon formula; they only show when that formula matches the game's damage readout for
+what you wear. It shows numbers only; it never tells you whether to Need or Greed.
 
 To plan more than one item, open the character screen and pick the SpellDelta tab (the
 last side tab), or click SpellDelta in the minimap AddOns menu. Click a slot to choose from
 the bag items that fit it, or drop or Shift-click an item. The middle shows your spells now
-and with the planned gear, the stat changes, and which gear bonuses grow which of your
-spells. Click a spell there to choose it for the Alt tooltip (up to 6). Right-clicking an
+and with the planned gear, the stat changes, what you get from them (health, attack power,
+crit, armor, dodge, parry, block...), and which gear bonuses grow which of your spells.
+Click a spell or a "what you get" line there to choose it for the Alt tooltip (up to 6
+in all). Right-clicking an
 item in your bags still equips it as usual; the plan adjusts to what you wear.
 
 `/delta dump` prints what SpellDelta has read, for bug reports.

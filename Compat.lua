@@ -291,7 +291,24 @@ function Compat.ItemLines(link)
 			lines[i] = ""
 		end
 	end
+	-- Right-hand texts ("Speed 2.80", "Mace") follow as lines of their own.
+	for _, line in ipairs(data.lines) do
+		local text = line.rightText
+		if type(text) == "string" and text ~= "" and not Compat.IsSecret(text) then
+			lines[#lines + 1] = text
+		end
+	end
 	return lines
+end
+
+-- Item class and subclass (2 = weapon; weapon subclass 15 = dagger), or nil.
+function Compat.ItemClass(link)
+	local fn = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+	local ok, _, _, _, _, _, classID, subclassID = Call(fn, link)
+	if ok and type(classID) == "number" then
+		return classID, subclassID
+	end
+	return nil
 end
 
 function Compat.EquippedLink(slot)
@@ -374,6 +391,133 @@ function Compat.ItemQuality(link)
 		return quality
 	end
 	return nil
+end
+
+-- The character's numbers that gear changes, for Body.lua. Every reader is the one the
+-- game's own character screen uses (Blizzard_UIPanels_Game/Camelot/PaperDollFrame*.lua):
+--   UnitAttackPower / UnitRangedAttackPower -> base, buffs, debuffs
+--   UnitDamage -> min, max, offhand min, max, bonus, penalty, percent
+--   UnitRangedDamage -> speed, min, max, bonus, penalty, percent
+--   GetAttackPowerForStat(stat, value), GetRangedAttackPowerForStat(stat, value),
+--   GetCritChanceFromStat(stat, value), GetSpellCritChanceFromStat(stat, value): what a stat
+--   value is worth (the stat tooltips call them with the current value; we call them with
+--   the planned one too), UnitHPPerStamina, GetDodgeChanceFromAttribute,
+--   C_PaperDollInfo.GetArmorEffectiveness(armor, attackerLevel).
+-- Unreadable or secret values are left out; Body.lua then leaves out what depends on them.
+local function Num(fn, ...)
+	local ok, value = Call(fn, ...)
+	if ok and type(value) == "number" and not Compat.IsSecret(value) then
+		return value
+	end
+	return nil
+end
+
+local function Pack(...)
+	return select("#", ...), { ... }
+end
+
+-- All return values of fn as numbers (nil returns stay nil, e.g. no off-hand), or nil when
+-- the call fails or any value is not a readable number.
+local function Nums(fn, ...)
+	local n, packed = Pack(Call(fn, ...))
+	if not packed[1] then
+		return nil
+	end
+	local out = {}
+	for i = 2, n do
+		local v = packed[i]
+		if v ~= nil then
+			if type(v) ~= "number" or Compat.IsSecret(v) then
+				return nil
+			end
+			out[i - 1] = v
+		end
+	end
+	return out
+end
+
+-- Average of a live damage range with bonuses and percent taken out (as the game's own
+-- damage tooltip does): what the weapon and attack power give.
+local function LiveBase(min, max, pos, neg, percent)
+	if not (min and max and percent and percent > 0) then
+		return nil
+	end
+	return { base = (min + max) / 2 / percent - (pos or 0) - (neg or 0), bonus = (pos or 0) + (neg or 0), pct = percent }
+end
+
+local function StatFn(fn)
+	if type(fn) ~= "function" then
+		return nil
+	end
+	return function(stat, value)
+		return Num(fn, stat, value)
+	end
+end
+
+function Compat.Snapshot()
+	local snap = { stats = {}, fn = {} }
+	local okClass, _, classFile = Call(UnitClass, "player")
+	snap.class = okClass and classFile or nil
+	snap.level = Compat.GetPlayerLevel()
+	for index, key in ipairs({ "str", "agi", "sta", "int", "spi" }) do
+		local r = Nums(UnitStat, "player", index)
+		snap.stats[key] = r and r[2]
+	end
+	local ap = Nums(UnitAttackPower, "player")
+	snap.ap = ap and ap[1] + (ap[2] or 0) + (ap[3] or 0)
+	local rap = Nums(UnitRangedAttackPower, "player")
+	snap.rap = rap and rap[1] + (rap[2] or 0) + (rap[3] or 0)
+	local d = Nums(UnitDamage, "player")
+	snap.melee = d and LiveBase(d[1], d[2], d[5], d[6], d[7])
+	snap.offhand = d and d[3] and d[4] and d[4] > 0 and LiveBase(d[3], d[4], d[5], d[6], d[7]) or nil
+	local r = Nums(UnitRangedDamage, "player")
+	snap.ranged = r and (r[1] or 0) > 0 and LiveBase(r[2], r[3], r[4], r[5], r[6]) or nil
+	snap.health = Num(UnitHealthMax, "player")
+	snap.mana = Num(UnitPowerMax, "player", 0)
+	snap.crit = Num(GetCritChance)
+	snap.rangedCrit = Num(GetRangedCritChance)
+	local spellCrit
+	for school = 2, 7 do
+		local v = Num(GetSpellCritChance, school)
+		if v and (not spellCrit or v > spellCrit) then
+			spellCrit = v
+		end
+	end
+	snap.spellCrit = spellCrit
+	snap.dodge = Num(GetDodgeChance)
+	snap.parry = Num(GetParryChance)
+	snap.block = Num(GetBlockChance)
+	snap.blockValue = Num(GetShieldBlock)
+	local armor = Nums(UnitArmor, "player")
+	snap.armor = armor and armor[2]
+	local def = Nums(UnitDefense, "player")
+	snap.defense = def and def[1] + (def[2] or 0)
+	local fn = snap.fn
+	fn.apFor = StatFn(GetAttackPowerForStat)
+	fn.rapFor = StatFn(GetRangedAttackPowerForStat)
+	fn.critFor = StatFn(GetCritChanceFromStat)
+	fn.spellCritFor = StatFn(GetSpellCritChanceFromStat)
+	fn.hpPerSta = Num(UnitHPPerStamina, "player")
+	fn.dodgeFromAgi = Num(GetDodgeChanceFromAttribute)
+	if C_PaperDollInfo and type(C_PaperDollInfo.GetArmorEffectiveness) == "function" then
+		fn.armorEff = function(value)
+			return Num(C_PaperDollInfo.GetArmorEffectiveness, value, snap.level)
+		end
+	end
+	fn.staBreak = type(STAMINA_BREAK) == "number" and STAMINA_BREAK or 20
+	fn.intBreak = type(INTELLECT_BREAK) == "number" and INTELLECT_BREAK or 20
+	fn.manaPerInt = type(MANA_PER_INTELLECT) == "number" and MANA_PER_INTELLECT or 15
+	fn.apPerDps = type(ATTACK_POWER_MAGIC_NUMBER) == "number" and ATTACK_POWER_MAGIC_NUMBER or 14
+	-- Druid Cat or Bear Form: auto attacks swing at the form's own speed.
+	if snap.class == "DRUID" then
+		local formID = Num(GetShapeshiftFormID)
+		local feral = (formID == 1 and "cat") or ((formID == 5 or formID == 8) and "bear") or nil
+		local speed = feral and Num(UnitAttackSpeed, "player")
+		if feral and speed and speed > 0 then
+			snap.feral, snap.formSpeed = feral, speed
+		end
+	end
+	return snap
 end
 
 -- { str, agi, sta, int, spi, armor } as shown on the character sheet; unreadable ones left out.

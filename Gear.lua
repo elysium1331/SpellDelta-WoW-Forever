@@ -93,10 +93,13 @@ function Gear.ParseBonus(lines)
 end
 
 -- Item stats other than spell bonuses, read from tooltip lines (English). Keys:
---   str, agi, sta, int, spi, armor, block, ap, mp5, hp5, crit, spellcrit, hit, spellhit,
+--   str, agi, sta, int, spi, armor, block, ap, rap, mp5, hp5, crit, spellcrit, hit, spellhit,
 --   def, dodge, parry, blockpct
-Gear.STAT_ORDER = { "sta", "int", "spi", "str", "agi", "armor", "ap", "mp5", "hp5", "spellcrit", "crit",
-	"spellhit", "hit", "def", "dodge", "parry", "blockpct", "block" }
+-- Weapons also get wmin, wmax ("28 - 52 Damage") and speed ("Speed 2.80"); ammunition gets
+-- ammodps ("Adds 7.5 damage per second"). Attack power that only counts against some foes or
+-- in some forms ("+45 Attack Power when fighting Undead") is left out.
+Gear.STAT_ORDER = { "sta", "int", "spi", "str", "agi", "armor", "ap", "rap", "mp5", "hp5", "spellcrit", "crit",
+	"spellhit", "hit", "def", "dodge", "parry", "blockpct", "block", "feralap" }
 local PRIMARY = { stamina = "sta", intellect = "int", spirit = "spi", strength = "str", agility = "agi" }
 local EQUIP_STATS = {
 	{ "^restores (%d+) mana per 5 sec", "mp5" },
@@ -105,7 +108,11 @@ local EQUIP_STATS = {
 	{ "^improves your chance to get a critical strike by (%d+)%%", "crit" },
 	{ "^improves your chance to hit with spells by (%d+)%%", "spellhit" },
 	{ "^improves your chance to hit by (%d+)%%", "hit" },
-	{ "^%+(%d+) attack power", "ap" },
+	{ "^%+(%d+) ranged attack power%.?$", "rap" },
+	{ "^%+(%d+) attack power%.?$", "ap" },
+	-- Druid weapons: only counts in Cat or Bear Form, so it is kept apart (Body adds it in form).
+	{ "^%+(%d+) attack power in cat, bear", "feralap" },
+	{ "^increases attack power by (%d+) in cat, bear", "feralap" },
 	{ "^increased defense %+(%d+)", "def" },
 	{ "^increases your chance to dodge an attack by (%d+)%%", "dodge" },
 	{ "^increases your chance to parry an attack by (%d+)%%", "parry" },
@@ -124,7 +131,16 @@ function Gear.ParseStats(lines)
 				local sign, n, name = text:match("^([%+%-])(%d+) (%a+)$")
 				local n2 = text:match("^(%d+) armor$")
 				local n3 = text:match("^(%d+) block$")
-				if sign and PRIMARY[name] then
+				local wmin, wmax = text:match("^(%d+) %- (%d+) damage$")
+				local speed = text:match("^speed (%d+%.?%d*)$")
+				local ammo = text:match("^adds (%d+%.?%d*) damage per second$")
+				if wmin and not stats.wmin then
+					stats.wmin, stats.wmax = tonumber(wmin), tonumber(wmax)
+				elseif speed then
+					stats.speed = tonumber(speed)
+				elseif ammo then
+					stats.ammodps = tonumber(ammo)
+				elseif sign and PRIMARY[name] then
 					add(PRIMARY[name], (sign == "-" and -1 or 1) * tonumber(n))
 				elseif n2 then
 					add("armor", tonumber(n2))
@@ -183,11 +199,28 @@ Gear.SLOTS = {
 local MAIN_HAND = { INVTYPE_WEAPON = true, INVTYPE_WEAPONMAINHAND = true }
 local OFF_HAND = { INVTYPE_WEAPONOFFHAND = true, INVTYPE_SHIELD = true, INVTYPE_HOLDABLE = true }
 
+-- Weapon damage per second from an item's tooltip numbers (0 for non-weapons).
+function Gear.WeaponDps(item)
+	local s = item and item.stats
+	if s and s.wmin and s.wmax and s.speed and s.speed > 0 then
+		return (s.wmin + s.wmax) / 2 / s.speed
+	end
+	return 0
+end
+
+-- The bag item a two-hander swap pairs with: the most spell bonus, then the most weapon damage.
+local function Better(a, b)
+	local sa, sb = Gear.Score(a.bonus), Gear.Score(b.bonus)
+	if sa ~= sb then
+		return sa > sb
+	end
+	return Gear.WeaponDps(a) > Gear.WeaponDps(b)
+end
+
 local function Best(items, accept, exclude)
 	local best
 	for _, item in ipairs(items or {}) do
-		if accept[item.loc] and item.link ~= exclude
-			and (not best or Gear.Score(item.bonus) > Gear.Score(best.bonus)) then
+		if accept[item.loc] and item.link ~= exclude and (not best or Better(item, best)) then
 			best = item
 		end
 	end

@@ -63,15 +63,24 @@ local function SortRows(rows, trackedOrder)
 	end)
 end
 
--- ctx = { state, plan, worn, tracked = { names }, showAll, playerStats }
--- Returns lines: { kind = "header" | "columns" | "spell" | "toggle" | "stat" | "text" | "spacer", ... }
+-- Item stats that a "What you get" line already covers (with the stats behind it): shown once.
+local COVERED = { ap = "ap", rap = "rap", armor = "armor", def = "defense", dodge = "dodge", parry = "parry",
+	blockpct = "block", block = "blockValue", crit = "crit", spellcrit = "spellCrit" }
+
+-- ctx = { state, plan, worn, tracked = { names and "stat:" keys }, showAll, playerStats, snap }
+-- Returns lines: { kind = "header" | "columns" | "spell" | "toggle" | "stat" | "derived" | "text" |
+-- "spacer", ... }
 function Tab.Build(ctx)
 	local lines = {}
 	local function add(line)
 		lines[#lines + 1] = line
 	end
 	local state, tracked = ctx.state, ctx.tracked or {}
-	local delta = Loadout.BonusDelta(ctx.plan, ctx.worn)
+	local delta = ns.Body.Delta(ctx.plan, ctx.worn, ctx.snap)
+	local trackedSet = {}
+	for _, key in ipairs(tracked) do
+		trackedSet[key] = true
+	end
 
 	if Loadout.IsEmpty(ctx.plan) then
 		add({ kind = "text", text = L.TAB_EMPTY_HINT, color = GREY })
@@ -94,15 +103,19 @@ function Tab.Build(ctx)
 			for _, row in ipairs(rows) do
 				anyChange = anyChange or row.change ~= 0
 			end
-			local hidden = 0
+			local hidden, measured = 0, false
 			add({ kind = "columns" })
 			for _, row in ipairs(rows) do
 				local isTracked = trackedOrder[row.name] ~= nil
 				if not anyChange or ctx.showAll or row.change ~= 0 or isTracked then
 					add({ kind = "spell", row = row, tracked = isTracked })
+					measured = measured or row.measured == true
 				else
 					hidden = hidden + 1
 				end
+			end
+			if measured then
+				add({ kind = "text", text = L.MEASURED_NOTE, color = GREY })
 			end
 			if hidden > 0 then
 				add({ kind = "toggle", text = L.TAB_SHOW_ALL:format(hidden) })
@@ -124,7 +137,7 @@ function Tab.Build(ctx)
 	local playerStats = ctx.playerStats or {}
 	for _, key in ipairs(Gear.STAT_ORDER) do
 		local change = statDelta[key]
-		if change then
+		if change and not (COVERED[key] and delta.derived[COVERED[key]]) then
 			local now = playerStats[key]
 			add({ kind = "stat", label = L.STAT[key], now = now, plan = now and now + change, change = change })
 			any = true
@@ -145,7 +158,31 @@ function Tab.Build(ctx)
 			any = true
 		end
 	end
-	if not any then
+	-- Every stat line the game gives this character, so any of them can be chosen for Alt. Like
+	-- spells: all of them when nothing changes, otherwise changed and chosen ones plus "Show all".
+	local derived = ns.Body.StatRows(delta.derived, L.DERIVED, true)
+	local statChange = false
+	for _, row in ipairs(derived) do
+		statChange = statChange or row.change ~= 0
+	end
+	local statHidden = 0
+	for _, row in ipairs(derived) do
+		local isTracked = trackedSet[row.key] == true
+		if not statChange or ctx.showAll or row.change ~= 0 or isTracked then
+			add({ kind = "derived", row = row, tracked = isTracked })
+		else
+			statHidden = statHidden + 1
+		end
+	end
+	if statHidden > 0 then
+		add({ kind = "toggle", text = L.TAB_SHOW_ALL:format(statHidden) })
+	elseif ctx.showAll and statChange then
+		add({ kind = "toggle", text = L.TAB_SHOW_FEWER })
+	end
+	if #derived > 0 then
+		add({ kind = "text", text = L.TAB_STAT_PICK, color = GREY })
+	end
+	if not any and #derived == 0 then
 		add({ kind = "text", text = L.TAB_NO_STATS, color = GREY })
 	end
 
@@ -153,9 +190,26 @@ function Tab.Build(ctx)
 	if #groups > 0 then
 		add({ kind = "spacer" })
 		add({ kind = "header", text = L.TAB_GROUPS })
-		add({ kind = "text", text = GOLD .. L.TAB_GROUP_ALL .. ":|r " .. L.TAB_GROUP_ALL_TEXT, color = WHITE })
+		local spellGroups = false
 		for _, g in ipairs(groups) do
-			local label = g.var == "h" and L.TOTAL_HEALING or L.BONUS_SCHOOL:format(L.TOTAL_SCHOOL[g.var])
+			spellGroups = spellGroups or type(g.var) == "number" or g.var == "h"
+		end
+		if spellGroups then
+			add({ kind = "text", text = GOLD .. L.TAB_GROUP_ALL .. ":|r " .. L.TAB_GROUP_ALL_TEXT, color = WHITE })
+		end
+		for _, g in ipairs(groups) do
+			local label
+			if g.var == "h" then
+				label = L.TOTAL_HEALING
+			elseif g.var == "ap" then
+				label = L.GROUP_AP
+			elseif g.var == "rap" then
+				label = L.GROUP_RAP
+			elseif g.var == "block" then
+				label = L.GROUP_BLOCK
+			else
+				label = L.BONUS_SCHOOL:format(L.TOTAL_SCHOOL[g.var])
+			end
 			add({ kind = "text", text = GOLD .. label .. ":|r " .. table.concat(g.names, ", "), color = WHITE })
 		end
 	end
@@ -269,6 +323,13 @@ local function Signed(n)
 	return (n > 0 and "+" or "") .. n
 end
 
+local function Pct(n, signed)
+	if n == nil then
+		return ""
+	end
+	return ((signed and n > 0) and "+" or "") .. ("%.2f"):format(n)
+end
+
 local function AcquireRow(index)
 	local row = ui.rows[index]
 	if row then
@@ -306,8 +367,11 @@ local function AcquireRow(index)
 		PlaceFromCursor(nil)
 	end)
 	row:SetScript("OnClick", function(self)
-		if self.line and self.line.kind == "spell" and ns.db then
-			Database.ToggleTracked(ns.db, self.line.row.name)
+		if self.line and (self.line.kind == "spell" or self.line.kind == "derived") and ns.db then
+			Database.ToggleTracked(ns.db, self.line.row.key or self.line.row.name)
+			if ns.Tooltip then
+				ns.Tooltip.Invalidate()
+			end
 			Tab.Refresh()
 		elseif self.line and self.line.kind == "toggle" then
 			showAll = not showAll
@@ -323,8 +387,9 @@ local function ShowLine(row, line, width)
 	for _, part in ipairs({ row.check, row.icon, row.name, row.now, row.plan, row.chg, row.text }) do
 		part:Hide()
 	end
-	row:EnableMouse(line.kind == "spell" or line.kind == "toggle")
-	row.highlight:SetShown(line.kind == "spell" or line.kind == "toggle")
+	local clickable = line.kind == "spell" or line.kind == "derived" or line.kind == "toggle"
+	row:EnableMouse(clickable)
+	row.highlight:SetShown(clickable)
 	local height = 16
 	if line.kind == "header" then
 		row.text:SetFontObject("GameFontNormal")
@@ -342,27 +407,33 @@ local function ShowLine(row, line, width)
 			fs:Show()
 		end
 		height = 14
-	elseif line.kind == "spell" or line.kind == "stat" then
+	elseif line.kind == "spell" or line.kind == "stat" or line.kind == "derived" then
 		local r = line.row
-		local nameLeft = line.kind == "spell" and 29 or 0
+		local nameLeft = line.kind == "spell" and 29 or line.kind == "derived" and 13 or 0
 		row.name:ClearAllPoints()
 		row.name:SetPoint("LEFT", nameLeft, 0)
 		row.name:SetPoint("RIGHT", row.now, "LEFT", -4, 0)
-		row.name:SetText(r and r.name or line.label)
+		row.name:SetText(r and Predict.Label(r) or line.label)
 		row.name:Show()
 		local now, planned, change
 		if r then
 			now, planned, change = r.before, r.after, r.change
 			row.check:SetShown(line.tracked)
-			local icon = Compat.GetSpellIcon(r.spellID)
+			local icon = r.spellID and Compat.GetSpellIcon(r.spellID)
 			row.icon:SetTexture(icon)
 			row.icon:SetShown(icon ~= nil)
 		else
 			now, planned, change = line.now, line.plan, line.change
 		end
-		row.now:SetText(Num(now))
-		row.plan:SetText(Num(planned))
-		row.chg:SetText(change ~= 0 and Signed(change) or "")
+		if r and r.pct then
+			row.now:SetText(Pct(now))
+			row.plan:SetText(Pct(planned))
+			row.chg:SetText(change ~= 0 and Pct(change, true) or "")
+		else
+			row.now:SetText(Num(now))
+			row.plan:SetText(Num(planned))
+			row.chg:SetText(change ~= 0 and Signed(change) or "")
+		end
 		local color = change > 0 and GREEN or change < 0 and RED or WHITE
 		row.now:SetTextColor(WHITE[1], WHITE[2], WHITE[3])
 		row.plan:SetTextColor(WHITE[1], WHITE[2], WHITE[3])
@@ -402,6 +473,7 @@ local function DrawList()
 		tracked = ns.db and ns.db.tracked,
 		showAll = showAll,
 		playerStats = Compat.PlayerStats(),
+		snap = Compat.Snapshot(),
 	})
 	local y = 0
 	for i, line in ipairs(lines) do

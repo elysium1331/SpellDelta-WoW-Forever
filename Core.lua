@@ -151,8 +151,7 @@ local function OnCast(spellID)
 	if not ns.db or type(spellID) ~= "number" or Compat.IsSecret(spellID) then
 		return
 	end
-	local data = ns.SpellData and ns.SpellData.spells
-	if data and data[spellID] then
+	if ns.Predict.Known(spellID) then
 		Database.AddCast(ns.db, Compat.GetSpellName(spellID))
 	end
 end

@@ -45,12 +45,69 @@ function Predict.Slots(spellID, data)
 	return slots, total
 end
 
--- Bonus change for one slot. delta = { d = { [2..7] = n }, h = n }.
+-- Bonus change for one slot. delta = { d = { [2..7] = n }, h = n, ap = n, rap = n }.
 local function Change(delta, var)
-	if var == "h" then
-		return delta.h or 0
+	if var == "h" or var == "ap" or var == "rap" then
+		return delta[var] or 0
 	end
 	return (delta.d and delta.d[var]) or 0
+end
+
+-- Weapon strike code for a spell (SpellData.strikes), or nil.
+function Predict.StrikeCode(spellID)
+	local strikes = ns.SpellData and ns.SpellData.strikes
+	return strikes and strikes[spellID] or nil
+end
+
+-- True for spells SpellDelta can say something about.
+function Predict.Known(spellID)
+	return Predict.Slots(spellID) ~= nil or Predict.StrikeCode(spellID) ~= nil
+		or (ns.Measured ~= nil and ns.Measured[spellID] ~= nil)
+end
+
+-- An ability whose attack power or block value share is only known from players' measurements
+-- (Measured.lua): the base from its own tooltip numbers plus that share. nil when it can't be
+-- worked out (unknown ability, unexpected text, no live numbers, no shield for block value).
+function Predict.Measured(spellID, values, delta, measured)
+	local m = (measured or ns.Measured or {})[spellID]
+	local base = delta and delta.base
+	if not (m and type(values) == "table" and base) then
+		return nil
+	end
+	local n = #values
+	local first = m.first < 0 and n + 1 + m.first or m.first
+	local last = m.last < 0 and n + 1 + m.last or m.last
+	if first < 1 or last > n or first > last then
+		return nil
+	end
+	local sum = 0
+	for i = first, last do
+		sum = sum + values[i]
+	end
+	local now, change
+	if m.var == "ap" then
+		now, change = base.ap, delta.ap
+	elseif m.var == "block" and base.shield then
+		now, change = base.blockValue, base.blockChange
+	end
+	if not now then
+		return nil
+	end
+	local before = sum / (last - first + 1) + (m.fixed or 0) + m.share * now
+	return { var = m.var, before = before, after = before + m.share * (change or 0), measured = true,
+		points = m.points }
+end
+
+-- The name a row shows: "Eviscerate (5 pts)*" for a measured finisher, else the spell's name.
+function Predict.Label(row)
+	local name = row.name
+	if row.points then
+		name = ns.L.ROW_POINTS:format(name, row.points)
+	end
+	if row.measured then
+		name = name .. ns.L.MEASURED_MARK
+	end
+	return name
 end
 
 -- Returns a prediction or nil, reason ("unknown" | "count").
@@ -106,12 +163,28 @@ function Predict.Rows(spells, delta, data, keepUnchanged)
 	local byName = {}
 	for _, s in ipairs(spells or {}) do
 		local p = s.values and Predict.Spell(s.spellID, s.values, delta, data)
+		if not p and ns.Body then
+			-- A weapon strike: its hit is worked out from the weapon and attack power.
+			local code = Predict.StrikeCode(s.spellID)
+			local before, after, kind = nil, nil, nil
+			local measured
+			if code then
+				before, after, kind, measured = ns.Body.Strike(code, delta)
+			end
+			if before then
+				p = { var = kind, before = before, after = after, strike = true, measured = measured }
+			end
+		end
+		if not p then
+			p = Predict.Measured(s.spellID, s.values, delta)
+		end
 		if p then
 			-- The change is rounded on its own, so a +0.9 change shows as +1 even when both
 			-- averages round to the same whole number.
 			local before, change = Predict.Round(p.before), Predict.Round(p.after - p.before)
-			local row = { spellID = s.spellID, name = s.name, var = p.var, before = before, after = before + change,
-				change = change }
+			local row = { spellID = s.spellID, name = s.name, key = s.name, var = p.var, before = before,
+				after = before + change, change = change, strike = p.strike, measured = p.measured,
+				points = p.points }
 			-- Several ranks of one spell on the bars: keep the strongest.
 			local old = byName[s.name]
 			if not old or row.before > old.before then
@@ -141,14 +214,16 @@ function Predict.Rows(spells, delta, data, keepUnchanged)
 	return rows, totals
 end
 
--- The spells an item tooltip shows: at most `max`. With spells the player chose (tracked =
--- { name, ... }), those, in the player's order. Otherwise the ones cast most often first, then
--- the biggest changes. casts = { [name] = count } (Database.AddCast).
+-- The spells an item tooltip shows: at most `max`. With spells (or stat lines, key "stat:...")
+-- the player chose (tracked = { key, ... }), those, in the player's order. Otherwise the ones
+-- cast most often first, then the biggest changes. casts = { [name] = count } (Database.AddCast).
+-- Without a choice, stat lines that change fill the spots spells leave free, in the tab's order,
+-- so an item that only adds health or armor still shows something.
 function Predict.Pick(rows, casts, max, tracked)
 	if type(tracked) == "table" and #tracked > 0 then
 		local byName, picked = {}, {}
 		for _, row in ipairs(rows or {}) do
-			byName[row.name] = row
+			byName[row.key or row.name] = row
 		end
 		for _, name in ipairs(tracked) do
 			if byName[name] and #picked < (max or #tracked) then
@@ -158,9 +233,13 @@ function Predict.Pick(rows, casts, max, tracked)
 		return picked
 	end
 	casts = casts or {}
-	local ranked = {}
-	for i, row in ipairs(rows or {}) do
-		ranked[i] = row
+	local ranked, stats = {}, {}
+	for _, row in ipairs(rows or {}) do
+		if row.stat then
+			stats[#stats + 1] = row
+		else
+			ranked[#ranked + 1] = row
+		end
 	end
 	table.sort(ranked, function(a, b)
 		local ca, cb = casts[a.name] or 0, casts[b.name] or 0
@@ -172,6 +251,9 @@ function Predict.Pick(rows, casts, max, tracked)
 		end
 		return a.name < b.name
 	end)
+	for _, row in ipairs(stats) do
+		ranked[#ranked + 1] = row
+	end
 	for i = #ranked, (max or #ranked) + 1, -1 do
 		ranked[i] = nil
 	end
@@ -179,21 +261,33 @@ function Predict.Pick(rows, casts, max, tracked)
 end
 
 -- Which bonus grows which spell, for "What gear bonuses do for your spells".
--- spells: the action-bar reading. Returns { { var = "h" | 2..7, names = { ... } }, ... },
--- healing first, then holy, fire, nature, frost, shadow, arcane; names sorted, no repeats.
+-- spells: the action-bar reading. Returns { { var = "h" | 2..7 | "ap" | "rap", names = { ... } }, ... },
+-- healing first, then holy, fire, nature, frost, shadow, arcane, attack power (with melee weapon
+-- strikes), ranged attack power (with ranged strikes); names sorted, no repeats.
 function Predict.Groups(spells, data)
 	local seen = {}
+	local function add(var, name)
+		seen[var] = seen[var] or {}
+		seen[var][name] = true
+	end
 	for _, s in ipairs(spells or {}) do
 		local slots = Predict.Slots(s.spellID, data)
 		for _, slot in ipairs(slots or {}) do
 			if slot.var then
-				seen[slot.var] = seen[slot.var] or {}
-				seen[slot.var][s.name] = true
+				add(slot.var, s.name)
 			end
+		end
+		local code = not slots and Predict.StrikeCode(s.spellID)
+		if code and ns.Body then
+			add(ns.Body.StrikeGroup(code), s.name)
+		end
+		local m = not slots and not code and ns.Measured and ns.Measured[s.spellID]
+		if m then
+			add(m.var, s.name)
 		end
 	end
 	local groups = {}
-	for _, var in ipairs({ "h", 2, 3, 4, 5, 6, 7 }) do
+	for _, var in ipairs({ "h", 2, 3, 4, 5, 6, 7, "ap", "rap", "block" }) do
 		if seen[var] then
 			local names = {}
 			for name in pairs(seen[var]) do

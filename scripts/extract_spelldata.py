@@ -114,6 +114,11 @@ class Data:
     def __init__(self, folder: Path):
         self.names = {r["ID"]: r["Name_lang"] for r in load(folder, "SpellName")}
         self.spell = {r["ID"]: r for r in load(folder, "Spell")}
+        self.description_by_name: dict[str, str] = {}
+        for sid in sorted(self.spell, key=int):
+            text = self.spell[sid].get("Description_lang", "")
+            if text.strip() and self.names.get(sid):
+                self.description_by_name.setdefault(self.names[sid], text)
         self.misc = {}
         for r in load(folder, "SpellMisc"):
             if r["DifficultyID"] == "0":
@@ -135,10 +140,12 @@ class Data:
             self.desc_vars[r["SpellID"]] = parsed
         skill_lines = {r["ID"]: r for r in load(folder, "SkillLine")}
         self.class_spells = set()
+        self.skill_line_name: dict[str, str] = {}
         for r in load(folder, "SkillLineAbility"):
             line = skill_lines.get(r["SkillLine"])
             if line and line["CategoryID"] == CLASS_CATEGORY and r["SkillLine"] not in EXCLUDED_SKILL_LINES:
                 self.class_spells.add(r["Spell"])
+                self.skill_line_name[r["Spell"]] = line["DisplayName_lang"]
 
     def school_mask(self, spell_id: str) -> int:
         return int(num(self.misc.get(spell_id, {}).get("SchoolMask", "0")))
@@ -291,8 +298,15 @@ class Template:
                 if new == text:
                     break
                 text = new
-            if re.search(r"\$(AP|RAP|MWS|MW|mw|mws)\b", text):
-                raise Unsupported(f"expression uses attack power {expr!r}")
+            if re.search(r"\$(MWS|MWB|MW|mw|mws|mwb)\b", text):
+                raise Unsupported(f"expression uses weapon damage {expr!r}")
+
+            def attack_power(m):
+                var = "rap" if m.group(1).lower() == "rap" else "ap"
+                vars_seen.add(var)
+                return f"({bonus:.10f})"
+
+            text = re.sub(r"\$(RAP|rap|AP|apm|ap)(?![A-Za-z])", attack_power, text)
             text = re.sub(r"\$(SPFR|SPFI|SPHO|SPH|SPN|SPS|SPA|SP)(?![A-Za-z])", spell_power, text)
             text = re.sub(r"\$PL\b", "60", text)
             text = re.sub(r"\$(\d*)([a-zA-Z])(\d?)", repl, text)
@@ -495,8 +509,8 @@ def build(folder: Path):
         if not row or not row["Description_lang"].strip():
             continue
         if not any(data.coef(spell_id, idx)[1] > 0 for idx in data.effects.get(spell_id, {})):
-            # Also allow spells whose text uses another spell's scaling numbers.
-            if not re.search(r"\$\d+[sSoOmM]", row["Description_lang"]):
+            # Also allow spells whose text uses another spell's scaling numbers, or attack power.
+            if not re.search(r"\$\d+[sSoOmM]|\$(AP|apm|RAP|rap)\b", row["Description_lang"]):
                 continue
         considered += 1
         try:
@@ -511,7 +525,113 @@ def build(folder: Path):
     return data, spells, considered, reasons
 
 
-def write_lua(path: Path, build_id: str, spells: dict[int, str]):
+# Weapon strikes: abilities whose damage comes from the weapon, attack power or block value
+# (Sinister Strike, Mortal Strike, Auto Shot, Bloodthirst, Shield Slam...). Their tooltips
+# show only a fixed part or a percentage, so the addon works the hit out from these codes.
+# Weapon codes: the first token says which weapon, then the steps in effect order:
+#   "m" main hand, "r" ranged, "o" off-hand, "b" both hands (main hand plus off-hand hit)
+#   "w+16"  weapon damage (the weapon's own speed for attack power) plus 16
+#   "n+68"  the same with normalized speed (instant attacks)
+#   "*1.5"  150% weapon damage (also multiplies the fixed amounts before it)
+# Other codes:
+#   "a 0.45+48"  45% of attack power plus 48 ("ra": ranged attack power)
+#   "k 655"      655 plus block value
+WEAPON_EFFECTS = {"17": "w", "58": "w", "121": "n"}
+WEAPON_PERCENT = "31"
+TRIGGER_EFFECTS = {"64", "3"}  # trigger spell, dummy (the work is done by the spell it names)
+AP_PCT_RE = re.compile(r"\$s(\d)% of your (ranged )?attack power(?: plus \$s(\d))?", re.I)
+BLOCK_RE = re.compile(r"\$s(\d) damage, increased by your block value", re.I)
+# "$s2% weapon damage per existing application" (Lacerate) is a stacking extra, not the hit.
+PCT_WEAPON_RE = re.compile(r"\$s(\d)% (?:of )?(?:off-hand )?weapon damage(?! per )", re.I)
+PLAIN_WEAPON_RE = re.compile(r"\bweapon damage\b", re.I)
+BOTH_RE = re.compile(r"\bboth (?:melee )?weapons\b", re.I)
+OFF_HAND_RE = re.compile(r"\boff-hand weapon\b", re.I)
+
+
+def weapon_steps(data: Data, spell_id: str, desc: str, depth: int = 0) -> list[str]:
+    effects = data.effects.get(spell_id, {})
+    # A percentage named only in the text (Devastate) counts when no effect carries it already.
+    has_percent = any(e["Effect"] == WEAPON_PERCENT for e in effects.values())
+    pct_in_text = set()
+    if depth == 0 and not has_percent:
+        pct_in_text = {int(m.group(1)) for m in PCT_WEAPON_RE.finditer(desc)}
+    steps = []
+    for index in sorted(effects):
+        e = effects[index]
+        if e["Effect"] in WEAPON_EFFECTS:
+            steps.append(f"{WEAPON_EFFECTS[e['Effect']]}+{int(round(num(e['EffectBasePointsF'])))}")
+        elif e["Effect"] == WEAPON_PERCENT or index in pct_in_text:
+            steps.append(f"*{num(e['EffectBasePointsF']) / 100:g}")
+    if not steps and depth == 0:
+        # A castable spell that hands the work to another one (Mutilate).
+        for index in sorted(effects):
+            e = effects[index]
+            trigger = e.get("EffectTriggerSpell", "0")
+            if e["Effect"] in TRIGGER_EFFECTS and trigger not in ("", "0"):
+                steps = weapon_steps(data, trigger, "", depth + 1)
+                if steps:
+                    break
+    return steps
+
+
+def strike(data: Data, spell_id: str, scaled: bool) -> str | None:
+    if data.skill_line_name.get(spell_id, "").startswith("Pet"):
+        return None
+    desc = data.spell.get(spell_id, {}).get("Description_lang", "")
+    if not desc.strip():
+        # A rank with no text of its own counts only when its spell's text says it strikes with
+        # both weapons (Mutilate's ranks); other text-less spells are hidden helpers.
+        desc = data.description_by_name.get(data.names.get(spell_id, ""), "")
+        if not BOTH_RE.search(desc):
+            return None
+    effects = data.effects.get(spell_id, {})
+
+    def base(index: int) -> float | None:
+        e = effects.get(index)
+        return num(e["EffectBasePointsF"]) if e else None
+
+    physical = data.school_mask(spell_id) == 1
+    m = AP_PCT_RE.search(desc)
+    if m and physical and base(int(m.group(1))):
+        fixed = base(int(m.group(3))) if m.group(3) else 0
+        return f"{'ra' if m.group(2) else 'a'} {base(int(m.group(1))) / 100:g}+{int(round(fixed or 0))}"
+    m = BLOCK_RE.search(desc)
+    if m and physical and base(int(m.group(1))) is not None:
+        return f"k {int(round(base(int(m.group(1)))))}"
+    if scaled:
+        return None  # its tooltip number already grows with spell damage or attack power
+    steps = weapon_steps(data, spell_id, desc)
+    if not steps and not PLAIN_WEAPON_RE.search(desc):
+        return None
+    if re.search(r"weapon damage per ", desc, re.I) and not any(step[0] in "wn" for step in steps):
+        return None
+    if not any(step[0] in "wn" for step in steps):
+        if not steps and not re.search(r"normal (?:off-hand )?weapon damage", desc, re.I):
+            return None
+        steps.insert(0, "w+0")  # percent of weapon damage only (Riposte), or plain weapon damage (Shiv)
+    if BOTH_RE.search(desc):
+        side = "b"
+    elif OFF_HAND_RE.search(desc) or re.search(r"off-hand weapon damage", desc, re.I):
+        side = "o"
+    elif re.search(r"\branged weapon\b", desc, re.I) or (
+            data.misc.get(spell_id, {}).get("RangeIndex") not in ("1", "2")
+            and data.skill_line_name.get(spell_id) == "Marksmanship"):
+        side = "r"
+    else:
+        side = "m"
+    return side + " " + " ".join(steps)
+
+
+def build_strikes(data: Data, spells: dict[int, str]) -> dict[int, str]:
+    strikes = {}
+    for spell_id in sorted(data.class_spells, key=int):
+        code = strike(data, spell_id, int(spell_id) in spells)
+        if code:
+            strikes[int(spell_id)] = code
+    return strikes
+
+
+def write_lua(path: Path, build_id: str, spells: dict[int, str], strikes: dict[int, str]):
     lines = [
         "-- GENERATED by scripts/extract_spelldata.py from World of Warcraft game data",
         f"-- (client {build_id}). Do not edit by hand. Numeric facts (c) Blizzard Entertainment.",
@@ -519,7 +639,14 @@ def write_lua(path: Path, build_id: str, spells: dict[int, str]):
         "-- One string per spell: one slot per number its tooltip shows, in order.",
         '-- "h:0.856" = +0.856 per point of healing bonus, "6:0.428" = per point of shadow',
         '-- damage bonus (2 holy .. 7 arcane), "*2" = a "min to max" pair of numbers,',
-        '-- "0" = a number that does not grow with bonuses.',
+        '-- "0" = a number that does not grow with bonuses. "ap:0.15" = per point of attack power',
+        '-- ("rap": ranged attack power).',
+        '--',
+        '-- strikes: abilities whose damage comes from the weapon, attack power or block value.',
+        '-- "m"/"r"/"o"/"b" = main hand, ranged, off-hand, both hands; then in effect order',
+        '-- "w+16" = weapon damage plus 16, "n+68" = the same at normalized weapon speed,',
+        '-- "*1.5" = 150% weapon damage (also multiplies the fixed amounts before it).',
+        '-- "a 0.45+48" = 45% of attack power plus 48 ("ra": ranged); "k 655" = 655 plus block value.',
         "local _, ns = ...",
         "",
         "ns.SpellData = {",
@@ -528,6 +655,9 @@ def write_lua(path: Path, build_id: str, spells: dict[int, str]):
     ]
     for sid in sorted(spells):
         lines.append(f'\t\t[{sid}] = "{spells[sid]}",')
+    lines += ["\t},", "\tstrikes = {"]
+    for sid in sorted(strikes):
+        lines.append(f'\t\t[{sid}] = "{strikes[sid]}",')
     lines += ["\t},", "}", ""]
     path.write_text("\n".join(lines), encoding="utf-8", newline="\n")
 
@@ -541,8 +671,10 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     data, spells, considered, reasons = build(args.folder)
     build_id = args.build or args.folder.name
-    write_lua(args.out, build_id, spells)
-    print(f"{len(spells)} of {considered} scaling class spells written to {args.out}")
+    strikes = build_strikes(data, spells)
+    write_lua(args.out, build_id, spells, strikes)
+    print(f"{len(spells)} of {considered} scaling class spells and {len(strikes)} weapon strikes "
+          f"written to {args.out}")
     if args.report:
         for reason, count in sorted(reasons.items(), key=lambda kv: -kv[1]):
             print(f"  skipped {count:5d}: {reason}")

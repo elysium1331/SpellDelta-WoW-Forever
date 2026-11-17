@@ -56,13 +56,25 @@ function Tooltip.Compute(link)
 		equipped = Equipped()
 		local plan = Gear.Plan(hovered, equipped, Bags)
 		if plan then
-			local delta = Gear.Delta(plan, equipped)
-			if not Gear.IsZero(delta) then
-				local rows, totals = Predict.Rows(state.spells, delta)
-				if #rows > 0 then
-					result = { rows = rows, totals = totals, header = Tooltip.Header(plan, equipped) }
+			local delta = ns.Body.Delta(plan.changes, equipped, Compat.Snapshot())
+			-- Rows that change, plus the ones the player chose even when they don't (+0 is an answer).
+			local chosen = {}
+			for _, key in ipairs(ns.db and ns.db.tracked or {}) do
+				chosen[key] = true
+			end
+			local all, totals = Predict.Rows(state.spells, delta, nil, true)
+			local rows = {}
+			for _, row in ipairs(all) do
+				if row.change ~= 0 or chosen[row.key] then
+					rows[#rows + 1] = row
 				end
 			end
+			-- Stat lines (health, armor, dodge...) join the spells; Pick decides what fits.
+			for _, row in ipairs(ns.Body.StatRows(delta.derived, L.DERIVED, chosen)) do
+				rows[#rows + 1] = row
+			end
+			-- Always a result for wearable gear: "no change" is an answer too.
+			result = { rows = rows, totals = totals, header = Tooltip.Header(plan, equipped) }
 		end
 		-- An item whose tooltip was not loaded yet is retried next time.
 		local missing = not hovered.bonus
@@ -119,27 +131,40 @@ function Tooltip.TotalsText(totals)
 end
 
 function Tooltip.ChangeText(row)
-	local sign = row.change > 0 and "+" or "-"
+	local sign = row.change >= 0 and "+" or "-"
+	if row.pct then
+		return L.TIP_ROW_PCT:format(row.before, row.after, sign, math.abs(row.change))
+	end
 	return L.TIP_ROW:format(row.before, row.after, sign, math.abs(row.change))
 end
 
 -- "|T<icon>:0|t Heal": the spell's icon at text height, then its name.
 function Tooltip.RowLabel(row)
-	local icon = Compat.GetSpellIcon and Compat.GetSpellIcon(row.spellID)
+	local icon = row.spellID and Compat.GetSpellIcon and Compat.GetSpellIcon(row.spellID)
 	if icon then
-		return ("  |T%s:0|t %s"):format(tostring(icon), row.name)
+		return ("  |T%s:0|t %s"):format(tostring(icon), Predict.Label(row))
 	end
-	return "  " .. row.name
+	return "  " .. Predict.Label(row)
 end
 
 local function AddBlock(tooltip, result)
 	tooltip:AddLine(" ")
 	tooltip:AddLine(result.header, GOLD[1], GOLD[2], GOLD[3], true)
 	local casts = ns.db and ns.db.casts
-	for _, row in ipairs(Predict.Pick(result.rows, casts, Tooltip.MAX_SPELLS, ns.db and ns.db.tracked)) do
-		local color = row.change > 0 and GREEN or RED
+	local picked = Predict.Pick(result.rows, casts, Tooltip.MAX_SPELLS, ns.db and ns.db.tracked)
+	for _, row in ipairs(picked) do
+		local color = row.change > 0 and GREEN or row.change < 0 and RED or GREY
 		tooltip:AddDoubleLine(Tooltip.RowLabel(row), Tooltip.ChangeText(row), WHITE[1], WHITE[2], WHITE[3],
 			color[1], color[2], color[3])
+	end
+	local measured = false
+	for _, row in ipairs(picked) do
+		measured = measured or row.measured == true
+	end
+	if #picked == 0 then
+		tooltip:AddLine(L.TIP_NO_CHANGE, GREY[1], GREY[2], GREY[3], true)
+	elseif measured then
+		tooltip:AddLine(L.MEASURED_NOTE, GREY[1], GREY[2], GREY[3], true)
 	end
 end
 

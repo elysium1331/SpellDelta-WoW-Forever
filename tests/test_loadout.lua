@@ -2,6 +2,7 @@ local H = ...
 local ns = {}
 H.load("Gear.lua", ns)
 H.load("Loadout.lua", ns)
+H.load("Body.lua", ns)
 local Gear, Loadout = ns.Gear, ns.Loadout
 
 local function item(link, loc, lines)
