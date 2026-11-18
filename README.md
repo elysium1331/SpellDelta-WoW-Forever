@@ -7,8 +7,8 @@ SpellDelta answers one question: *what does this talent, or this item, change ab
 the spells I actually use?* It reads the game's own tooltip numbers for the spells on
 your action bars, so you see real numbers and no upgrade scores.
 
-**Status:** 0.5.0-alpha.6, phase 4 of the plan in [docs/PLAN.md](docs/PLAN.md).
-Not released yet.
+**Status:** 0.5.0, the first public release. What was checked in game, and what was not,
+is in [docs/VALIDATION.md](docs/VALIDATION.md); the plan is in [docs/PLAN.md](docs/PLAN.md).
 
 SpellDelta is an unofficial community addon. Blizzard Entertainment did not make or
 endorse it.
@@ -17,7 +17,14 @@ endorse it.
 
 | Client | Version / build | Interface | Status |
 |---|---|---|---|
-| World of Warcraft: Forever | 1.60.1.70938 | 16001 | Built against this build's Blizzard UI source and game data; checked in game with a level 34 priest (healing and caster damage spells). |
+| World of Warcraft: Forever | 1.60.1.70938 | 16001 | Built against this build's Blizzard UI source and game data; checked in game with a level 34 priest (healing and caster damage spells, gear, enchants, talents). |
+
+**Other classes have not been checked in game yet.** Warrior, rogue, hunter, paladin,
+shaman, druid, mage and warlock numbers (weapon strikes, attack power, forms, block value)
+come from the same game data and formulas and are unit-tested, but nobody has compared
+them with the game's own tooltips. If a number looks off, please
+[open an issue](https://github.com/elysium1331/SpellDelta-WoW-Forever/issues) with a
+screenshot and the output of `/delta dump`.
 
 ## How to use it
 

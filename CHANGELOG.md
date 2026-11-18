@@ -4,6 +4,21 @@ All notable user-facing changes. Format: [Keep a Changelog](https://keepachangel
 Versions follow [Semantic Versioning](https://semver.org/). The saved-data schema
 version is tracked separately (currently schema 1).
 
+## [0.5.0] - 2026-11-17
+
+First public release, for WoW Forever 1.60.1 (build 70938). Everything below from the
+alphas, in short:
+
+### Added
+- Hold Alt over an item (bags, loot rolls, quest rewards, chat links) to see what it changes
+  about up to 6 spells on your action bars, with before and after numbers, and what the stat
+  changes give you (health, mana, attack power, crit, armor, dodge, parry, block).
+- Hold Alt over a talent to see what its next rank does, and what points you added but have
+  not applied yet will do, including costs, cast times, cooldowns, durations and crit.
+- A SpellDelta tab on the character screen to plan a whole set of gear.
+- All classes: spells, weapon strikes, attack power, finishers, druid forms. Checked in game
+  with a priest only; see docs/VALIDATION.md.
+
 ## [0.5.0-alpha.6] - 2026-11-17
 
 ### Fixed
