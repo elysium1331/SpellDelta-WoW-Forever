@@ -275,3 +275,56 @@ H.test("gear: attack power in forms only counts in Cat or Bear Form", function()
 	snap.feral, snap.formSpeed = "bear", 2.5
 	H.eq(Body.Delta({ [16] = staff }, { [16] = old }, snap).ap, 100, "bear form: +100")
 end)
+
+H.test("gear: enchant lines and other stat wordings are read", function()
+	local s = Gear.ParseStats({
+		"48 Armor", "+4 Stamina", "+11 Intellect",
+		"|cff1eff00Enchanted: Stamina +4|r",
+		"Equip: Improves your chance to hit by 1.0%.",
+		"Equip: Improves your chance to get a critical strike with melee attacks by 1.0%.",
+		"Equip: Increases your critical strike chance with spells and attacks by 1%.",
+		"Equip: Increases the block value of your shield by 12.",
+		"Equip: +40 Armor.",
+		"Enchanted: +100 Health",
+		"Enchanted: Mana +65",
+		"Enchanted: +3 All Stats",
+		"Equip: +45 Attack Power when fighting Undead.",
+		"Equip: Increases your armor by 20 while using a Shield or Buckler.",
+		"Use: Improves your chance to hit by 3%.",
+	})
+	H.eq(s.sta, 11)
+	H.eq(s.int, 14)
+	H.eq(s.str, 3)
+	H.eq(s.hit, 1)
+	H.eq(s.crit, 2)
+	H.eq(s.spellcrit, 1)
+	H.eq(s.block, 12)
+	H.eq(s.armor, 88)
+	H.eq(s.health, 100)
+	H.eq(s.mana, 65)
+	H.eq(s.ap, nil)
+	local b = Gear.ParseBonus({ "Enchanted: Healing Spells +24", "Enchanted: +30 Spell Damage and Healing" })
+	H.eq(b.h, 54)
+	H.eq(b.d[6], 30)
+end)
+
+H.test("gear: enchants with several parts (Minor Healing Power: +6 healing, +2 damage)", function()
+	local b = Gear.ParseBonus({ "Enchanted: Healing +6 and Spell Damage +2" })
+	H.eq(b.h, 6)
+	H.eq(b.d[2], 2)
+	b = Gear.ParseBonus({ "Enchanted: +6 Healing Spells and +2 Damage Spells" })
+	H.eq(b.h, 6)
+	b = Gear.ParseBonus({ "Enchanted: +18 Healing and Spell Damage" })
+	H.eq(b.h, 18)
+	H.eq(b.d[6], 18)
+	b = Gear.ParseBonus({ "Enchanted: Healing Power +6" })
+	H.eq(b.h, 6)
+	H.eq(b.d[6], 0)
+	local s = Gear.ParseStats({ "Enchanted: Stamina +10, Defense +7 and Healing +24", "Enchanted: Armor +16/Spell Power +2" })
+	H.eq(s.sta, 10)
+	H.eq(s.def, 7)
+	H.eq(s.armor, 16)
+	b = Gear.ParseBonus({ "Enchanted: Stamina +10, Defense +7 and Healing +24", "Enchanted: Armor +16/Spell Power +2" })
+	H.eq(b.h, 26)
+	H.eq(b.d[3], 2)
+end)

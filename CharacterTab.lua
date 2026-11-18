@@ -64,7 +64,7 @@ local function SortRows(rows, trackedOrder)
 end
 
 -- Item stats that a "What you get" line already covers (with the stats behind it): shown once.
-local COVERED = { ap = "ap", rap = "rap", armor = "armor", def = "defense", dodge = "dodge", parry = "parry",
+local COVERED = { health = "health", mana = "mana", ap = "ap", rap = "rap", armor = "armor", def = "defense", dodge = "dodge", parry = "parry",
 	blockpct = "block", block = "blockValue", crit = "crit", spellcrit = "spellCrit" }
 
 -- ctx = { state, plan, worn, tracked = { names and "stat:" keys }, showAll, playerStats, snap }

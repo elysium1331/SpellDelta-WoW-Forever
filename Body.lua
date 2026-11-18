@@ -129,14 +129,14 @@ function Body.Derive(snap, sd)
 		local function hp(sta)
 			return math.min(brk, sta) + (math.max(brk, sta) - brk) * fn.hpPerSta
 		end
-		line("health", snap.health, hp(st.sta + dSta) - hp(st.sta))
+		line("health", snap.health, hp(st.sta + dSta) - hp(st.sta) + Sum(sd, "health"))
 	end
 	if snap.mana and snap.mana > 0 and st.int then
 		local brk, per = fn.intBreak or 20, fn.manaPerInt or 15
 		local function mana(int)
 			return math.min(brk, int) + (math.max(brk, int) - brk) * per
 		end
-		line("mana", snap.mana, mana(st.int + dInt) - mana(st.int))
+		line("mana", snap.mana, mana(st.int + dInt) - mana(st.int) + Sum(sd, "mana"))
 	end
 	local fromStr, fromAgi = Worth(fn.apFor, 1, st.str, dStr), Worth(fn.apFor, 2, st.agi, dAgi)
 	if fromStr and fromAgi then

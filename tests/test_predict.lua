@@ -93,6 +93,22 @@ H.test("gear: other spell bonus wordings", function()
 	H.eq(b.h, 27)
 end)
 
+H.test("gear: healing and damage split wordings (Death Speaker Robes)", function()
+	local b = Gear.ParseBonus({
+		"Equip: Increases healing done by up to 20 and damage done by up to 7 for all magical spells and effects.",
+	})
+	H.eq(b.h, 20)
+	H.eq(b.d[2], 7)
+	H.eq(b.d[6], 7)
+	b = Gear.ParseBonus({
+		"Equip: Increases healing done by spells and effects by up to 22 and damage done by up to 8.",
+		"Equip: Increases damage done by spells and effects by up to 5.",
+		"Equip: Increases damage done by magical spells and effects by up to 3, and decreases the magical resistances of your spell targets by 10.",
+	})
+	H.eq(b.h, 22)
+	H.eq(b.d[3], 16)
+end)
+
 local function item(link, loc, lines)
 	return { link = link, loc = loc, name = link, bonus = Gear.ParseBonus(lines) }
 end

@@ -4,6 +4,31 @@ All notable user-facing changes. Format: [Keep a Changelog](https://keepachangel
 Versions follow [Semantic Versioning](https://semver.org/). The saved-data schema
 version is tracked separately (currently schema 1).
 
+## [0.5.0-alpha.6] - 2026-11-17
+
+### Fixed
+- Enchants with more than one part ("Healing +8 and Spell Damage +3", "Stamina +10, Defense +7
+  and Healing +24", "Armor +16/Spell Power +2") count each part.
+
+## [0.5.0-alpha.5] - 2026-11-17
+
+### Fixed
+- Enchants on an item ("Enchanted: Stamina +4", "Healing Spells +24", "+100 Health") were not
+  counted.
+- Hit and crit worded with a decimal ("Improves your chance to hit by 1.0%") were not read;
+  most hit and crit gear uses that wording.
+- Also read now: melee crit ("critical strike with melee attacks"), crit with spells and
+  attacks, spell hit ring runes, shield block value ("Increases the block value of your
+  shield"), bonus armor ("+40 Armor"), extra health and mana, Defense from enchants, dodge
+  from enchants, and "+N All Stats".
+
+## [0.5.0-alpha.4] - 2026-11-17
+
+### Fixed
+- Items worded "Increases healing done by up to 20 and damage done by up to 7 for all magical
+  spells and effects" (Death Speaker Robes and about 80 others) showed only stat lines: their
+  spell power was not read. Two rarer wordings are read too.
+
 ## [0.5.0-alpha.3] - 2026-11-17
 
 ### Added

@@ -120,7 +120,7 @@ local L = {
 	},
 	STAT = {
 		sta = "Stamina", int = "Intellect", spi = "Spirit", str = "Strength", agi = "Agility",
-		armor = "Armor", ap = "Attack power", rap = "Ranged attack power", feralap = "Attack power in forms", mp5 = "Mana per 5 sec", hp5 = "Health per 5 sec",
+		health = "Health", mana = "Mana", armor = "Armor", ap = "Attack power", rap = "Ranged attack power", feralap = "Attack power in forms", mp5 = "Mana per 5 sec", hp5 = "Health per 5 sec",
 		spellcrit = "Spell crit %", crit = "Crit %", spellhit = "Spell hit %", hit = "Hit %",
 		def = "Defense", dodge = "Dodge %", parry = "Parry %", blockpct = "Block %", block = "Block amount",
 	},

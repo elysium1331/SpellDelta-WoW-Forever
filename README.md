@@ -7,7 +7,7 @@ SpellDelta answers one question: *what does this talent, or this item, change ab
 the spells I actually use?* It reads the game's own tooltip numbers for the spells on
 your action bars, so you see real numbers and no upgrade scores.
 
-**Status:** 0.5.0-alpha.3, phase 4 of the plan in [docs/PLAN.md](docs/PLAN.md).
+**Status:** 0.5.0-alpha.6, phase 4 of the plan in [docs/PLAN.md](docs/PLAN.md).
 Not released yet.
 
 SpellDelta is an unofficial community addon. Blizzard Entertainment did not make or

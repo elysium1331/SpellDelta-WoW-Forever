@@ -4,6 +4,8 @@
 --   "Equip: Increases damage and healing done by magical spells and effects by up to 34."
 --   "Equip: Increases healing done by magical spells and effects by up to 68."
 --   "Equip: Increases damage done by Shadow spells and effects by up to 28."
+--   "Equip: Increases healing done by up to 20 and damage done by up to 7 for all magical
+--    spells and effects." (healing and damage split, a common wording on caster gear)
 --   "+13 Shadow Spell Damage", "+22 Healing Spells", "+15 Damage and Healing Spells"
 -- "Use:" effects and set bonuses are ignored (they are not always active).
 --
@@ -32,18 +34,70 @@ local function AddAll(bonus, amount, healing)
 	end
 end
 
--- One tooltip line -> adds to bonus. Returns true if the line was a spell bonus.
-local function ParseLine(bonus, line)
-	local text = line:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
-	text = text:match("^%s*(.-)%s*$")
-	local lower = text:lower()
-	if lower:find("^use:") or lower:find("^chance on hit:") or lower:find("set:") then
-		return false
+-- "stamina +4" -> "+4 stamina", so enchants read like the item's own stats.
+local function Flip(part)
+	part = part:gsub("^%s*and%s+", ""):match("^%s*(.-)%s*%.?$")
+	local name, amount = part:match("^([%a%s]-)%s*(%+%d+%.?%d*)$")
+	if name and name ~= "" then
+		return amount .. " " .. name
 	end
-	local body = lower:gsub("^equip:%s*", "")
+	return part
+end
+
+-- A tooltip line as parts in lower case without colors, "Equip:" or "Enchanted:"; empty for
+-- lines that are not always active (Use:, Chance on hit:, set bonuses). Enchants are worded
+-- "Stamina +4", "Healing +6 and Spell Damage +2" or "Stamina +10, Defense +7 and Healing +24";
+-- each amount becomes its own part ("+6 healing", "+2 spell damage"). "+18 Healing and Spell
+-- Damage" stays whole: only one side has a number.
+local function Parts(line)
+	local text = line:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):match("^%s*(.-)%s*$"):lower()
+	if text:find("^use:") or text:find("^chance on hit:") or text:find("set:") then
+		return {}
+	end
+	local enchant = text:match("^enchanted:%s*(.*)$")
+	if not enchant then
+		return { (text:gsub("^equip:%s*", "")) }
+	end
+	local parts = {}
+	for piece in (enchant .. "/"):gmatch("([^/,]+)[/,]") do
+		local rest = piece
+		while true do
+			local a, b = rest:match("^(.-%d.-) and (.-%d.*)$")
+			if not a then
+				break
+			end
+			parts[#parts + 1] = Flip(a)
+			rest = b
+		end
+		parts[#parts + 1] = Flip(rest)
+	end
+	return parts
+end
+Gear.Parts = Parts
+
+-- One cleaned part -> adds to bonus. Returns true if it was a spell bonus.
+local function ParseLine(bonus, body)
 	local n = body:match("^increases damage and healing done by magical spells and effects by up to (%d+)")
 	if n then
 		AddAll(bonus, tonumber(n), true)
+		return true
+	end
+	-- Healing and damage split: "healing done by up to 20 and damage done by up to 7 for all
+	-- magical spells and effects", or "healing done by spells and effects by up to 20 and
+	-- damage done by up to 7".
+	local heal, dmg = body:match("^increases healing done by up to (%d+) and damage done by up to (%d+)")
+	if not heal then
+		heal, dmg = body:match("^increases healing done by .-spells and effects by up to (%d+) and damage done by up to (%d+)")
+	end
+	if heal then
+		AddAll(bonus, tonumber(dmg), false)
+		bonus.h = bonus.h + tonumber(heal)
+		return true
+	end
+	n = body:match("^increases damage done by spells and effects by up to (%d+)")
+		or body:match("^increases damage done by magical spells and effects by up to (%d+)")
+	if n then
+		AddAll(bonus, tonumber(n), false)
 		return true
 	end
 	n = body:match("^increases healing done by .-spells and effects by up to (%d+)")
@@ -57,13 +111,14 @@ local function ParseLine(bonus, line)
 		bonus.d[SCHOOL_BY_NAME[school]] = bonus.d[SCHOOL_BY_NAME[school]] + tonumber(n)
 		return true
 	end
-	n = body:match("^%+(%d+) damage and healing spells") or body:match("^%+(%d+) spell damage and healing")
+	n = body:match("^%+(%d+) damage and healing") or body:match("^%+(%d+) spell damage and healing")
+		or body:match("^%+(%d+) healing and spell damage") or body:match("^%+(%d+) healing and damage")
 		or body:match("^%+(%d+) spell power")
 	if n then
 		AddAll(bonus, tonumber(n), true)
 		return true
 	end
-	n = body:match("^%+(%d+) healing spells") or body:match("^%+(%d+) healing$")
+	n = body:match("^%+(%d+) healing") or body:match("^%+(%d+) spell healing")
 	if n then
 		bonus.h = bonus.h + tonumber(n)
 		return true
@@ -86,7 +141,9 @@ function Gear.ParseBonus(lines)
 	local bonus = NewBonus()
 	for _, line in ipairs(lines or {}) do
 		if type(line) == "string" then
-			ParseLine(bonus, line)
+			for _, part in ipairs(Parts(line)) do
+				ParseLine(bonus, part)
+			end
 		end
 	end
 	return bonus
@@ -98,26 +155,46 @@ end
 -- Weapons also get wmin, wmax ("28 - 52 Damage") and speed ("Speed 2.80"); ammunition gets
 -- ammodps ("Adds 7.5 damage per second"). Attack power that only counts against some foes or
 -- in some forms ("+45 Attack Power when fighting Undead") is left out.
-Gear.STAT_ORDER = { "sta", "int", "spi", "str", "agi", "armor", "ap", "rap", "mp5", "hp5", "spellcrit", "crit",
+Gear.STAT_ORDER = { "sta", "int", "spi", "str", "agi", "health", "mana", "armor", "ap", "rap", "mp5", "hp5", "spellcrit", "crit",
 	"spellhit", "hit", "def", "dodge", "parry", "blockpct", "block", "feralap" }
 local PRIMARY = { stamina = "sta", intellect = "int", spirit = "spi", strength = "str", agility = "agi" }
+-- Percent amounts may have a decimal ("by 1.0%"). A rule with two keys adds to both.
+local PCT = "(%d+%.?%d*)%%"
 local EQUIP_STATS = {
 	{ "^restores (%d+) mana per 5 sec", "mp5" },
 	{ "^restores (%d+) health per 5 sec", "hp5" },
-	{ "^improves your chance to get a critical strike with spells by (%d+)%%", "spellcrit" },
-	{ "^improves your chance to get a critical strike by (%d+)%%", "crit" },
-	{ "^improves your chance to hit with spells by (%d+)%%", "spellhit" },
-	{ "^improves your chance to hit by (%d+)%%", "hit" },
+	{ "^%+(%d+) mana every 5 sec", "mp5" },
+	{ "^%+(%d+) mana per 5 sec", "mp5" },
+	{ "^mana regen (%d+) per 5 sec", "mp5" },
+	{ "^improves your chance to get a critical strike with spells by " .. PCT, "spellcrit" },
+	{ "^improves your chance to get a critical strike with melee attacks by " .. PCT, "crit" },
+	{ "^improves your chance to get a critical strike by " .. PCT, "crit" },
+	{ "^increases your critical strike chance with spells and attacks by " .. PCT, "crit", "spellcrit" },
+	{ "^improves your chance to hit with spells by " .. PCT, "spellhit" },
+	{ "^chance to hit with spells increased by " .. PCT, "spellhit" },
+	{ "^improves your chance to hit by " .. PCT, "hit" },
+	{ "^increases the block value of your shield by (%d+)%.?$", "block" },
+	{ "^%+(%d+) block value", "block" },
+	{ "^%+(%d+) armor%.?$", "armor" },
+	{ "^increases your armor by (%d+)%.?$", "armor" },
+	{ "^%+(%d+) health%.?$", "health" },
+	{ "^%+(%d+) hit points%.?$", "health" },
+	{ "^%+(%d+) mana%.?$", "mana" },
+	{ "^%+(%d+) defense%.?$", "def" },
+	{ "^%+(%d+) defense skill%.?$", "def" },
+	{ "^increases your defense by (%d+)%.?$", "def" },
 	{ "^%+(%d+) ranged attack power%.?$", "rap" },
 	{ "^%+(%d+) attack power%.?$", "ap" },
 	-- Druid weapons: only counts in Cat or Bear Form, so it is kept apart (Body adds it in form).
 	{ "^%+(%d+) attack power in cat, bear", "feralap" },
 	{ "^increases attack power by (%d+) in cat, bear", "feralap" },
 	{ "^increased defense %+(%d+)", "def" },
-	{ "^increases your chance to dodge an attack by (%d+)%%", "dodge" },
-	{ "^increases your chance to parry an attack by (%d+)%%", "parry" },
-	{ "^increases your chance to block attacks with a shield by (%d+)%%", "blockpct" },
+	{ "^increases your chance to dodge an attack by " .. PCT, "dodge" },
+	{ "^%+" .. PCT .. " dodge", "dodge" },
+	{ "^increases your chance to parry an attack by " .. PCT, "parry" },
+	{ "^increases your chance to block attacks with a shield by " .. PCT, "blockpct" },
 }
+local ALL_PRIMARY = { "str", "agi", "sta", "int", "spi" }
 
 function Gear.ParseStats(lines)
 	local stats = {}
@@ -125,10 +202,10 @@ function Gear.ParseStats(lines)
 		stats[key] = (stats[key] or 0) + n
 	end
 	for _, line in ipairs(lines or {}) do
-		if type(line) == "string" then
-			local text = line:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):match("^%s*(.-)%s*$"):lower()
-			if not (text:find("^use:") or text:find("^chance on hit:") or text:find("set:")) then
-				local sign, n, name = text:match("^([%+%-])(%d+) (%a+)$")
+		for _, text in ipairs(type(line) == "string" and Parts(line) or {}) do
+			do
+				local sign, n, name = text:match("^([%+%-])(%d+) (%a+)%.?$")
+				local all = text:match("^%+(%d+) all stats%.?$") or text:match("^%+(%d+) stats%.?$")
 				local n2 = text:match("^(%d+) armor$")
 				local n3 = text:match("^(%d+) block$")
 				local wmin, wmax = text:match("^(%d+) %- (%d+) damage$")
@@ -142,16 +219,21 @@ function Gear.ParseStats(lines)
 					stats.ammodps = tonumber(ammo)
 				elseif sign and PRIMARY[name] then
 					add(PRIMARY[name], (sign == "-" and -1 or 1) * tonumber(n))
+				elseif all then
+					for _, key in ipairs(ALL_PRIMARY) do
+						add(key, tonumber(all))
+					end
 				elseif n2 then
 					add("armor", tonumber(n2))
 				elseif n3 then
 					add("block", tonumber(n3))
 				else
-					local body = text:gsub("^equip:%s*", "")
 					for _, rule in ipairs(EQUIP_STATS) do
-						local v = body:match(rule[1])
+						local v = text:match(rule[1])
 						if v then
-							add(rule[2], tonumber(v))
+							for i = 2, #rule do
+								add(rule[i], tonumber(v))
+							end
 							break
 						end
 					end
