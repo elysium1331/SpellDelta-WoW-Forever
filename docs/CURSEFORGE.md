@@ -63,17 +63,25 @@ Open the character screen and pick the **SpellDelta** side tab. Click a slot to 
 
 Bug reports and source code: [GitHub](https://github.com/elysium1331/SpellDelta-WoW-Forever)
 
-*SpellDelta is an unofficial community addon, not affiliated with or endorsed by Blizzard Entertainment. Spell coefficients come from the game's own data; a few attack-power numbers come from the wowsims simulator (MIT) and are marked "*".*
+*Logo: original, made with AI image generation (OpenAI, via Codex) and reviewed by hand, MIT-licensed like the code. SpellDelta is an unofficial community addon, not affiliated with or endorsed by Blizzard Entertainment. Spell coefficients come from the game's own data; a few attack-power numbers come from the wowsims simulator (MIT) and are marked "*".*
 ```
 
 ## Images
 
 | File | Use |
 |---|---|
-| (to capture) | Alt tooltip on an item in your bags, cropped to the tooltip (no chat or player names). |
-| (to capture) | Alt tooltip on a talent with a pending point. |
-| (to capture) | The SpellDelta tab on the character screen with a planned item. |
-| (to make) | Project logo / avatar (square). |
+| `art/curseforge/01-item-shoulders.png` | Alt over an item: spell damage and healing shoulders, six spells. |
+| `art/curseforge/02-item-cloak-enchant.png` | Alt over an item with an enchant line. |
+| `art/curseforge/03-item-robes-healing.png` | Alt over an item with split healing/damage: each spell takes its own share. |
+| `art/curseforge/04-talent-twin-disciplines.png` | Alt over a talent: next rank on the spells on your bars. |
+| `art/curseforge/05-talent-mana-cost.png` | Alt over a talent that changes costs (Mental Agility). |
+| `art/curseforge/06-talent-darkness.png` | Alt over a shadow damage talent (Darkness). |
+| `art/curseforge/07-tab-spells.png` | SpellDelta tab: spells now and with the planned gear. |
+| `art/curseforge/08-tab-stats.png` | SpellDelta tab: stats and what they give. |
+| `art/curseforge/logo.png` | Project logo / avatar (1024 x 1024): a glowing triangle (delta, "change") rising from an open spellbook in a gold medallion, matching ProfessionWheel's logo. Made with Codex image generation from `art/briefs/logo-1.md`; spare option in `art/curseforge/raw/logo-b.png`. |
+
+All cropped from 5120x2160 originals on 2026-11-17; no character name, chat or other
+players' names are visible.
 
 ## Upload
 

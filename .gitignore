@@ -13,3 +13,6 @@ Thumbs.db
 
 # Local-only artifacts
 data-src/
+
+# Codex run logs hold local paths
+art/briefs/logs/
