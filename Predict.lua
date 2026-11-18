@@ -242,11 +242,25 @@ function Predict.Rows(spells, delta, data, keepUnchanged)
 	return rows, totals
 end
 
--- The spells an item tooltip shows: at most `max`. With spells (or stat lines, key "stat:...")
--- the player chose (tracked = { key, ... }), those, in the player's order. Otherwise the ones
--- cast most often first, then the biggest changes. casts = { [name] = count } (Database.AddCast).
--- Without a choice, stat lines that change fill the spots spells leave free, in the tab's order,
--- so an item that only adds health or armor still shows something.
+-- The rows an item tooltip shows. Spells: at most `max`. With spells (or stat lines, key
+-- "stat:...") the player chose (tracked = { key, ... }), those, in the player's order. Otherwise
+-- the ones cast most often first, then the biggest changes. casts = { [name] = count }
+-- (Database.AddCast). Stat lines that change (health, mana, armor...) always follow, in the
+-- tab's order and outside the limit: an item that adds spell power but costs 11 stamina must
+-- show the lost health too.
+local function AddChangedStats(picked, rows)
+	local have = {}
+	for _, row in ipairs(picked) do
+		have[row] = true
+	end
+	for _, row in ipairs(rows or {}) do
+		if row.stat and row.change ~= 0 and not have[row] then
+			picked[#picked + 1] = row
+		end
+	end
+	return picked
+end
+
 function Predict.Pick(rows, casts, max, tracked)
 	if type(tracked) == "table" and #tracked > 0 then
 		local byName, picked = {}, {}
@@ -258,7 +272,7 @@ function Predict.Pick(rows, casts, max, tracked)
 				picked[#picked + 1] = byName[name]
 			end
 		end
-		return picked
+		return AddChangedStats(picked, rows)
 	end
 	casts = casts or {}
 	local ranked, stats = {}, {}
@@ -279,11 +293,11 @@ function Predict.Pick(rows, casts, max, tracked)
 		end
 		return a.name < b.name
 	end)
-	for _, row in ipairs(stats) do
-		ranked[#ranked + 1] = row
-	end
 	for i = #ranked, (max or #ranked) + 1, -1 do
 		ranked[i] = nil
+	end
+	for _, row in ipairs(stats) do
+		ranked[#ranked + 1] = row
 	end
 	return ranked
 end

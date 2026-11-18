@@ -7,8 +7,11 @@ SpellDelta answers one question: *what does this talent, or this item, change ab
 the spells I actually use?* It reads the game's own tooltip numbers for the spells on
 your action bars, so you see real numbers and no upgrade scores.
 
-**Status:** 1.0.0, stable. What was checked in game, and what was not,
+**Status:** 1.0.1, stable. What was checked in game, and what was not,
 is in [docs/VALIDATION.md](docs/VALIDATION.md); the plan is in [docs/PLAN.md](docs/PLAN.md).
+
+**Download:** [CurseForge](https://www.curseforge.com/wow/addons/elysium-spelldelta) or
+[GitHub releases](https://github.com/elysium1331/SpellDelta-WoW-Forever/releases).
 
 SpellDelta is an unofficial community addon. Blizzard Entertainment did not make or
 endorse it.
@@ -37,10 +40,13 @@ its icon, number before and after, and the change:
 Spells - with Death Speaker Scepter, replacing Glimmering Staff
   Heal                 629 to 665  (+36)
   Smite                116 to 97   (-19)
+  Health               1210 to 1100 (-110)
+  Mana                 1450 to 1285 (-165)
 ```
 
 The 6 are the spells you cast most (SpellDelta counts them as you play); until it has seen
-you cast, the biggest changes.
+you cast, the biggest changes. Below them, every stat line the item changes (health, mana,
+crit, armor...) always shows, so stamina or intellect you would lose is never hidden.
 
 No setup and no commands. SpellDelta reads your spells' current tooltip numbers itself,
 and knows from the game data how much each number grows per point of spell damage,

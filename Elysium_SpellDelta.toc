@@ -2,13 +2,14 @@
 ## Title: [Elysium] SpellDelta
 ## Notes: Shows what a talent or an item changes about the spells on your action bars.
 ## Author: Ryan Novak (elysium1331)
-## Version: 1.0.0
+## Version: 1.0.1
 ## Category: Elysium
 ## Group: Elysium_SpellDelta
 ## SavedVariablesPerCharacter: SpellDeltaCharDB
 ## AddonCompartmentFunc: SpellDelta_OnAddonCompartmentClick
 ## X-License: MIT
 ## X-Website: https://github.com/elysium1331/SpellDelta-WoW-Forever
+## X-Curse-Project-ID: 1813861
 ## X-Verified-Client: WoW Forever 1.60.1.70938
 
 Locales\enUS.lua

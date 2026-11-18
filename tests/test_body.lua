@@ -133,12 +133,33 @@ H.test("body: a chosen stat line can be picked for item tooltips", function()
 	rows[#rows + 1] = spellRow
 	local auto = Predict.Pick(rows, {}, 6)
 	H.eq(auto[1].name, "Heroic Strike", "spells first")
-	H.eq(auto[2].name, "Health", "then stat lines fill free spots")
-	H.eq(#Predict.Pick(rows, {}, 1), 1, "stat lines never push out a spell")
-	H.eq(Predict.Pick(rows, {}, 1)[1].name, "Heroic Strike")
+	H.eq(auto[2].name, "Health", "then the stat lines that change")
+	local one = Predict.Pick(rows, {}, 1)
+	H.eq(one[1].name, "Heroic Strike", "stat lines never push out a spell")
+	H.eq(one[2].name, "Health", "and the spell limit never hides a stat change")
 	local picked = Predict.Pick(rows, {}, 6, { "stat:health", "Heroic Strike" })
 	H.eq(picked[1].name, "Health")
 	H.eq(picked[2].name, "Heroic Strike")
+	H.eq(#picked, #rows, "no row twice")
+end)
+
+H.test("body: an item that raises six spells still shows the stamina and intellect it costs", function()
+	-- Ryan's dagger (2026-11-18): more spell power, 11 less stamina and intellect.
+	local d = Body.Derive(Warrior(), { sta = -11 })
+	local rows = {}
+	for i = 1, 7 do
+		rows[i] = { spellID = i, name = "Spell" .. i, key = "Spell" .. i, change = i }
+	end
+	for _, row in ipairs(Body.StatRows(d, ns.L.DERIVED)) do
+		rows[#rows + 1] = row
+	end
+	local picked = Predict.Pick(rows, {}, 6)
+	H.eq(#picked, 6 + #Body.StatRows(d, ns.L.DERIVED))
+	H.eq(picked[7].name, "Health")
+	H.truthy(picked[7].change < 0, "the loss shows")
+	local chosen = Predict.Pick(rows, {}, 6, { "Spell1" })
+	H.eq(chosen[1].name, "Spell1")
+	H.eq(chosen[2].name, "Health", "a chosen spell list still shows stat changes")
 end)
 
 H.test("data: percent-of-weapon, off-hand, both-hand, attack-power share and block value abilities", function()

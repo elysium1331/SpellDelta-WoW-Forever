@@ -4,6 +4,16 @@ All notable user-facing changes. Format: [Keep a Changelog](https://keepachangel
 Versions follow [Semantic Versioning](https://semver.org/). The saved-data schema
 version is tracked separately (currently schema 1).
 
+## [1.0.1] - 2026-11-18
+
+### Fixed
+- Alt over an item that changes 6 or more spells hid what it costs in stats: health and mana
+  lost from less stamina or intellect did not show (a dagger plus off-hand replacing a staff).
+  Stat lines that change now always show below the spells, also when you chose your own spells.
+
+### Added
+- CurseForge page: https://www.curseforge.com/wow/addons/elysium-spelldelta (project 1813861).
+
 ## [1.0.0] - 2026-11-17
 
 Stable release. Same features and numbers as 0.5.0, which passed its in-game checks on WoW
