@@ -2,7 +2,7 @@
 ## Title: [Elysium] SpellDelta
 ## Notes: Shows what a talent or an item changes about the spells on your action bars.
 ## Author: Ryan Novak (elysium1331)
-## Version: 0.4.0-alpha.5
+## Version: 0.5.0-alpha.3
 ## Category: Elysium
 ## Group: Elysium_SpellDelta
 ## SavedVariablesPerCharacter: SpellDeltaCharDB
@@ -19,6 +19,7 @@ Learning.lua
 ActionSpells.lua
 SpellData.lua
 Measured.lua
+Talents.lua
 Predict.lua
 Gear.lua
 Items.lua
@@ -26,5 +27,6 @@ Loadout.lua
 Body.lua
 Measure.lua
 Tooltip.lua
+TalentTip.lua
 CharacterTab.lua
 Core.lua

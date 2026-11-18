@@ -90,6 +90,9 @@ function Tab.Build(ctx)
 	if not state then
 		add({ kind = "text", text = L.TAB_READING, color = GREY })
 	else
+		if ns.Talents then
+			ns.Talents.Attach(delta, state.bonuses, ns.Compat.GetPlayerLevel())
+		end
 		local rows = Predict.Rows(state.spells, delta, nil, true)
 		if #rows == 0 then
 			add({ kind = "text", text = L.TAB_NO_SPELLS, color = GREY })

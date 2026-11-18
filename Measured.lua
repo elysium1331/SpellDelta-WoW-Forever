@@ -13,6 +13,7 @@
 --   share  how much of it the whole hit (or the whole damage over time) gets, at `points`
 --          combo points where the ability has them
 --   fixed  a flat amount the simulator adds on top (found by testing)
+--   periodic  damage over time (talents for damage over time apply)
 --   first, last  which numbers of the ability's own tooltip hold its base damage for that hit
 --          (an average when two: "min-max"); negative counts from the end of the text
 local _, ns = ...
@@ -20,11 +21,11 @@ local _, ns = ...
 local EVISCERATE = { var = "ap", share = 0.03 * 5, points = 5, first = -2, last = -1 }
 local FEROCIOUS_BITE = { var = "ap", share = 0.05 * 5, points = 5, first = -2, last = -1 }
 -- Rupture at 5 points: 8 ticks of 0.24 / 8 attack power each.
-local RUPTURE = { var = "ap", share = 0.24, points = 5, first = -2, last = -2 }
+local RUPTURE = { var = "ap", share = 0.24, points = 5, first = -2, last = -2, periodic = true }
 -- Rip at 5 points: 8 ticks of 0.01 x 4 attack power, then +50% periodic damage (SoD tuning).
-local RIP = { var = "ap", share = 0.01 * 4 * 8 * 1.5, points = 5, first = -2, last = -2 }
+local RIP = { var = "ap", share = 0.01 * 4 * 8 * 1.5, points = 5, first = -2, last = -2, periodic = true }
 -- Garrote: 6 ticks of 0.03 attack power.
-local GARROTE = { var = "ap", share = 0.03 * 6, first = 1, last = 1 }
+local GARROTE = { var = "ap", share = 0.03 * 6, first = 1, last = 1, periodic = true }
 -- Shield of Righteousness: 2.2 x block value plus 20, on top of the amount the tooltip shows.
 local SHIELD_OF_RIGHTEOUSNESS = { var = "block", share = 2.2, fixed = 20, first = 1, last = 1 }
 

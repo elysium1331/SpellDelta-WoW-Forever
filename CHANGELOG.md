@@ -4,6 +4,47 @@ All notable user-facing changes. Format: [Keep a Changelog](https://keepachangel
 Versions follow [Semantic Versioning](https://semver.org/). The saved-data schema
 version is tracked separately (currently schema 1).
 
+## [0.5.0-alpha.3] - 2026-11-17
+
+### Added
+- Alt over a talent shows what it changes on your character sheet, with the same lines gear
+  uses: block, parry and dodge chance (Shield Specialization, Deflection), crit and hit chance,
+  Defense, a percent of a stat and what that stat brings (Mental Strength: Intellect and mana),
+  armor from items (Toughness), attack power, block value, and mana regeneration while casting.
+- Talents that raise a magic school's damage (Darkness, Searing Light, Moonfury) raise those
+  spells' numbers, in the talent tooltip and in item tooltips.
+- Crit damage talents (Lethality, Ruin) show the crit damage of the abilities they touch.
+- Parts of a talent that depend on a weapon type, form, stance or event are left out.
+
+## [0.5.0-alpha.2] - 2026-11-17
+
+### Added
+- Talents for every class's abilities, not only spells: weapon strikes and finishers take the
+  talents that raise their whole hit (Aggression on Sinister Strike and Eviscerate, Opportunity
+  on Backstab, Serrated Blades on Rupture), in item tooltips and on Alt over a talent.
+- Alt over a talent also lists the plain facts it changes: cost, cast time (with your haste),
+  cooldown, crit chance from talents, and duration. A longer damage over time also shows its
+  bigger total (Improved Shadow Word: Pain: 6 ticks become 8).
+
+### Fixed
+- Talents you press to use (Inner Focus, Cold Blood, Arcane Power) no longer count as if they
+  were always on.
+
+## [0.5.0-alpha.1] - 2026-11-17
+
+### Added
+- Alt over a talent in the talent window: what its next rank does to the spells on your bars,
+  and what the points you added but did not apply yet do. The game's own spell tooltips only
+  change after Apply Changes, so these come from the game data.
+
+### Fixed
+- Item tooltips now count your applied talents. A talent that raises a spell's whole amount
+  (Twin Disciplines) also raises what gear adds: the staff's +34 on Renew shows +35 at 3 points,
+  as the game does. Talents that only raise a spell's own amount (Improved Power Word: Shield)
+  leave the gear part alone, as the game does.
+- The new number is cut off the way the game does it instead of rounded (Shadow Word: Pain with
+  the cloak showed 350, the game 349), whenever the game data can rebuild the current number.
+
 ## [0.4.0-alpha.5] - 2026-11-16
 
 ### Added

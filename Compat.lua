@@ -171,6 +171,38 @@ function Compat.GetSpellCost(spellID)
 	return chosen.cost, chosen.name
 end
 
+-- Cast time in milliseconds as the game shows it now (haste and talents included), 0 for
+-- instant spells, nil if unknown. C_Spell.GetSpellInfo(id).castTime.
+function Compat.GetCastTime(spellID)
+	local ok, info = Call(SpellAPI("GetSpellInfo"), spellID)
+	if ok and type(info) == "table" and type(info.castTime) == "number" and not Compat.IsSecret(info.castTime) then
+		return info.castTime
+	end
+	return nil
+end
+
+-- Cooldown in seconds as the spell's tooltip shows it ("8 sec cooldown", "3 min cooldown"),
+-- applied talents included; nil if it has none or the tooltip can't be read.
+-- C_TooltipInfo.GetSpellByID(id) -> { lines = { { leftText, rightText } } }.
+function Compat.GetCooldownSeconds(spellID)
+	local ok, data = Call(C_TooltipInfo and C_TooltipInfo.GetSpellByID, spellID)
+	if not ok or type(data) ~= "table" or type(data.lines) ~= "table" then
+		return nil
+	end
+	for _, line in ipairs(data.lines) do
+		for _, text in ipairs({ line.rightText, line.leftText }) do
+			if type(text) == "string" and not Compat.IsSecret(text) then
+				local n, unit = text:match("([%d%.]+) (%a+) cooldown")
+				n = tonumber(n)
+				if n and (unit == "sec" or unit == "min" or unit == "hr") then
+					return n * (unit == "min" and 60 or unit == "hr" and 3600 or 1)
+				end
+			end
+		end
+	end
+	return nil
+end
+
 -- Action bars ----------------------------------------------------------------------
 
 function Compat.ActionApi()

@@ -5,7 +5,8 @@ Usage:
 
 Input: the CSV files wow.export writes from its Data Tables tab (semicolon separated):
 Spell, SpellName, SpellEffect, SpellMisc, SpellDuration, SkillLine, SkillLineAbility,
-SpellDescriptionVariables, SpellXDescriptionVariables.
+SpellDescriptionVariables, SpellXDescriptionVariables, SpellClassOptions, SpellLevels,
+SpellCastTimes, TraitDefinition, TraitNodeEntry.
 
 What it writes, per class spell whose numbers grow with spell damage or healing: one
 "slot" for every number the spell's tooltip shows, in tooltip order. A slot says how
@@ -50,6 +51,7 @@ AURA_PERIODIC_HEAL = 8
 AURA_PERIODIC_LEECH = 53
 AURA_SCHOOL_ABSORB = 69
 HEAL_AURAS = {AURA_PERIODIC_HEAL, AURA_SCHOOL_ABSORB}
+PERIODIC_AURAS = {AURA_PERIODIC_DAMAGE, AURA_PERIODIC_HEAL, AURA_PERIODIC_LEECH}
 AURA_EFFECTS = {EFFECT_APPLY_AURA, EFFECT_APPLY_AREA_AURA_PARTY, 27, 65, 119, 128, 129, 143, 174}
 AURA_DAMAGE_SHIELD = 43
 # Effects whose number is damage (weapon strikes count when the spell has a magic school,
@@ -124,6 +126,7 @@ class Data:
             if r["DifficultyID"] == "0":
                 self.misc.setdefault(r["SpellID"], r)
         self.duration = {r["ID"]: num(r["Duration"]) for r in load(folder, "SpellDuration")}
+        self.cast_times = {r["ID"]: num(r["Base"]) for r in load(folder, "SpellCastTimes")}
         self.effects: dict[str, dict[int, dict]] = defaultdict(dict)
         for r in load(folder, "SpellEffect"):
             if r["DifficultyID"] == "0":
@@ -138,6 +141,15 @@ class Data:
                 if m:
                     parsed[m.group(1).lower()] = m.group(2).strip()
             self.desc_vars[r["SpellID"]] = parsed
+        self.class_options = {}
+        for r in load(folder, "SpellClassOptions"):
+            self.class_options.setdefault(r["SpellID"], r)
+        self.levels = {}
+        for r in load(folder, "SpellLevels"):
+            if r["DifficultyID"] == "0":
+                self.levels.setdefault(r["SpellID"], (int(num(r["BaseLevel"])), int(num(r["MaxLevel"]))))
+        self.trait_definitions = load(folder, "TraitDefinition")
+        self.trait_entries = load(folder, "TraitNodeEntry")
         skill_lines = {r["ID"]: r for r in load(folder, "SkillLine")}
         self.class_spells = set()
         self.skill_line_name: dict[str, str] = {}
@@ -146,6 +158,9 @@ class Data:
             if line and line["CategoryID"] == CLASS_CATEGORY and r["SkillLine"] not in EXCLUDED_SKILL_LINES:
                 self.class_spells.add(r["Spell"])
                 self.skill_line_name[r["Spell"]] = line["DisplayName_lang"]
+
+    def cast_ms(self, spell_id: str) -> float:
+        return self.cast_times.get(self.misc.get(spell_id, {}).get("CastingTimeIndex", "0"), 0.0)
 
     def school_mask(self, spell_id: str) -> int:
         return int(num(self.misc.get(spell_id, {}).get("SchoolMask", "0")))
@@ -189,6 +204,12 @@ class Data:
         var = self.bonus_var(spell_id, e)
         return (var, c) if var else (None, 0.0)
 
+    def periodic(self, spell_id: str, index: int) -> bool:
+        e = self.effect(spell_id, index)
+        if not e:
+            return False
+        return int(num(e["Effect"])) in AURA_EFFECTS and int(num(e["EffectAura"])) in PERIODIC_AURAS
+
     def ticks(self, spell_id: str, index: int) -> int:
         e = self.effect(spell_id, index)
         if not e:
@@ -224,12 +245,20 @@ def literal_count(text: str) -> int:
 
 class Slot:
     """One token of the tooltip: n numbers (2 for a "min to max" range) growing by
-    coef per point of bonus `var` (None: not growing)."""
-    __slots__ = ("var", "coef", "n")
+    coef per point of bonus `var` (None: not growing).
 
-    def __init__(self, var: str | None = None, coef: float = 0.0, n: int = 1):
+    For talents: idx is the spell effect the number comes from (None when unknown), base the
+    number at zero bonus (None for a "min to max" pair or when unknown), periodic whether it is
+    damage or healing over time."""
+    __slots__ = ("var", "coef", "n", "idx", "base", "periodic", "per_level")
+
+    def __init__(self, var: str | None = None, coef: float = 0.0, n: int = 1, idx: int | None = None,
+                 base: float | None = None, periodic: bool = False, per_level: float = 0.0):
         self.var, self.coef = (var, coef) if var and coef > 0 else (None, 0.0)
         self.n = n
+        self.idx, self.base, self.periodic = idx, base, periodic
+        # Growth of `base` per character level above the spell's level (Power Word: Shield).
+        self.per_level = per_level
 
     def encode(self) -> str:
         if not self.var:
@@ -273,6 +302,7 @@ class Template:
     def expr_slot(self, expr: str) -> Slot:
         """${expr} -> one number, growing linearly with the bonus (or not at all)."""
         vars_seen = set()
+        refs = set()
 
         def substitute(bonus: float) -> str:
             def repl(m):
@@ -281,6 +311,7 @@ class Template:
                 value, var = self.ref_value(spell, letter, index, bonus)
                 if var:
                     vars_seen.add(var)
+                    refs.add((spell, letter.lower(), index or 1))
                 return f"({value:.10f})"
 
             def spell_power(m):
@@ -324,7 +355,19 @@ class Template:
         if len(vars_seen) > 1:
             raise Unsupported("expression mixes bonuses")
         growth = abs(f1 - f0) / 1000.0
-        return Slot(next(iter(vars_seen)) if vars_seen else None, growth)
+        idx, periodic = None, False
+        if len(refs) == 1:
+            spell, letter, index = next(iter(refs))
+            periodic = letter == "o" or self.data.periodic(spell, index)
+            if spell == self.spell_id:
+                idx = index
+        base = f0 if f1 >= f0 else None
+        # A value that also grows with character level is left to the live tooltip.
+        for spell, _, index in refs:
+            e = self.data.effect(spell, index)
+            if e and num(e["EffectRealPointsPerLevel"]) != 0:
+                base = None
+        return Slot(next(iter(vars_seen)) if vars_seen else None, growth, idx=idx, base=base, periodic=periodic)
 
     def var_expr(self, name: str) -> str:
         variables = self.data.desc_vars.get(self.spell_id, {})
@@ -418,6 +461,8 @@ class Template:
             for s in slot:
                 if s.var:
                     s.coef = s.coef / factor if m.group(1) == "/" else s.coef * factor
+                if s.base is not None:
+                    s.base = s.base / factor if m.group(1) == "/" else s.base * factor
             return j + m.end(), slot
         m = re.match(r"(\d*)([a-zA-Z])(\d?)", text[j:])
         if not m:
@@ -433,14 +478,20 @@ class Template:
             if not e:
                 raise Unsupported(f"missing effect {spell_id}:{idx}")
             var, c = self.data.coef(spell_id, idx)
+            own = idx if spell_id == self.spell_id else None
+            periodic = self.data.periodic(spell_id, idx)
+            per_level = num(e["EffectRealPointsPerLevel"])
+            if per_level and spell_id != self.spell_id:
+                own = None  # another spell's level range; not tracked
             if letter in "oO":
                 ticks = self.data.ticks(spell_id, idx)
                 if ticks <= 0:
                     raise Unsupported(f"$o without ticks on {spell_id}:{idx}")
-                return [Slot(var, c * ticks)]
+                return [Slot(var, c * ticks, idx=own, base=num(e["EffectBasePointsF"]) * ticks, periodic=True,
+                             per_level=per_level * ticks)]
             if letter == "s" and num(e.get("Variance", "0")) > 0:
-                return [Slot(var, c, n=2)]
-            return [Slot(var, c)]
+                return [Slot(var, c, n=2, idx=own, periodic=periodic)]
+            return [Slot(var, c, idx=own, base=num(e["EffectBasePointsF"]), periodic=periodic, per_level=per_level)]
         if letter in FIXED_LETTERS:
             return [Slot()]
         if letter in "zZ":
@@ -502,6 +553,7 @@ def match_brace(text: str, start: int, open_ch: str, close_ch: str) -> int:
 def build(folder: Path):
     data = Data(folder)
     spells: dict[int, str] = {}
+    heads: dict[int, tuple] = {}
     reasons: dict[str, int] = defaultdict(int)
     considered = 0
     for spell_id in sorted(data.class_spells, key=int):
@@ -522,6 +574,16 @@ def build(folder: Path):
             reasons["no-scaling-number"] += 1
             continue
         spells[int(spell_id)] = " ".join(s.encode() for s in slots)
+        head = next(s for s in slots if s.var)
+        base = head.base if head.n == 1 and head.base is not None else None
+        level = None
+        if base is not None and head.per_level:
+            if head.idx is None or spell_id not in data.levels:
+                base = None
+            else:
+                level = (head.per_level, *data.levels[spell_id])
+        heads[int(spell_id)] = (head.idx or 0, base, head.periodic, level)
+    data.heads = heads
     return data, spells, considered, reasons
 
 
@@ -631,7 +693,149 @@ def build_strikes(data: Data, spells: dict[int, str]) -> dict[int, str]:
     return strikes
 
 
-def write_lua(path: Path, build_id: str, spells: dict[int, str], strikes: dict[int, str]):
+# Talents: spell modifiers (aura 107 flat, 108 percent) whose EffectMiscValue is one of these
+# operations. Operation numbers as tested in game on 2026-11-17 (Twin Disciplines, Improved
+# Power Word: Shield): 0 and 22 multiply the whole amount, spell power included; 3/12/23/8
+# change only the spell's own base amount.
+TALENT_OPS = {
+    0: "damage and healing",
+    1: "duration",
+    7: "crit chance",
+    10: "cast time",
+    11: "cooldown",
+    14: "cost",
+    15: "crit damage bonus",
+    3: "base amount of effect 1",
+    8: "base amount of every effect",
+    12: "base amount of effect 2",
+    22: "damage and healing over time",
+    23: "base amount of effect 3",
+    24: "spell power share",
+}
+MODIFIER_AURAS = {107: "f", 108: "p"}
+# Talent auras that change a character-sheet number (kind "s"). Amounts are percent points
+# unless noted. 30 skill (only Defense, skill 95, is kept), 47 parry, 49 dodge, 51 block,
+# 52 melee crit, 54 hit, 55 spell hit, 57 spell crit, 290 crit with attacks (and spells when
+# its words say so), 134 mana regeneration while casting, 137 % of stats (mask: 1 strength,
+# 2 agility, 4 stamina, 8 intellect, 16 spirit), 142/466 % armor from items, 166/167 % attack
+# power / ranged attack power, 272 % block value.
+STAT_AURAS = {30, 47, 49, 51, 52, 54, 55, 57, 134, 137, 142, 166, 167, 272, 290, 466}
+SKILL_DEFENSE = 95
+# Kind "d": 79 % damage done for a school mask (2 holy ... 64 arcane). Physical (1) is left
+# out: those talents need a weapon type or a shield the data here does not name.
+AURA_DAMAGE_DONE = 79
+# A part of a talent's text with one of these words depends on a weapon, form, stance or event.
+CONDITION_RE = re.compile(r"\b(while|when|wand|wands|weapon|weapons|form|stance|against|after|"
+                          r"each time|off-hand|poisons?)\b", re.I)
+
+
+def effect_clause(description: str, index: int) -> str | None:
+    """The part of a talent's text that names effect `index` ($s1, $m1...), or None."""
+    for clause in re.split(r"[.;]|\band\b", description):
+        if re.search(r"\$[sSmM]%d\b" % index, clause):
+            return clause
+    return None
+SPELL_ATTR0_PASSIVE = 0x40
+
+
+def unsigned(value: str) -> int:
+    return int(num(value)) & 0xFFFFFFFF
+
+
+def family(data: Data, spell_id: str) -> tuple | None:
+    row = data.class_options.get(spell_id)
+    if not row or row["SpellClassSet"] in ("", "0"):
+        return None
+    mask = [unsigned(v) for v in row["SpellClassMask"].split(",")]
+    if not any(mask):
+        return None
+    return (int(row["SpellClassSet"]), *mask)
+
+
+def build_talents(data: Data, spells: dict[int, str]) -> tuple[dict, dict]:
+    # Every class spell: talents also change abilities whose numbers SpellDelta does not read
+    # from spell power (cost, cast time, cooldown, crit chance, weapon strikes).
+    families = {}
+    for sid in sorted(data.class_spells, key=int):
+        fam = family(data, sid)
+        if fam:
+            families[int(sid)] = fam
+    max_ranks = {r["TraitDefinitionID"]: int(num(r["MaxRanks"])) for r in data.trait_entries}
+    talents = {}
+    for d in data.trait_definitions:
+        spell_id = d["SpellID"]
+        if spell_id in ("", "0") or d["ID"] not in max_ranks:
+            continue
+        row = data.class_options.get(spell_id)
+        class_set = int(num(row["SpellClassSet"])) if row else 0
+        # Only passive talents change spells for good; Inner Focus, Cold Blood or Arcane Power
+        # are buttons whose effect lasts while they are active.
+        attributes = data.misc.get(spell_id, {}).get("Attributes", "0").split(",")
+        if not int(num(attributes[0])) & SPELL_ATTR0_PASSIVE:
+            continue
+        description = data.spell.get(spell_id, {}).get("Description_lang", "")
+        mods = []
+        for index in sorted(data.effects.get(spell_id, {})):
+            e = data.effects[spell_id][index]
+            aura = int(num(e["EffectAura"]))
+            if int(num(e["Effect"])) not in AURA_EFFECTS:
+                continue
+            misc = [int(num(v)) for v in (e["EffectMiscValue"].split(",") + ["0", "0"])[:2]]
+            amount = num(e["EffectBasePointsF"])
+            if aura in STAT_AURAS or aura == AURA_DAMAGE_DONE:
+                # An effect the text names only once for two effects (Deadliness: melee and
+                # ranged attack power) shares the first effect's words.
+                clause = effect_clause(description, index) or effect_clause(description, 1)
+                # "continue while casting" is what regeneration while casting means, not a condition.
+                conditional = clause is not None and aura != 134 and CONDITION_RE.search(clause)
+                if clause is None or conditional or amount == 0:
+                    continue  # unnamed in the text, or depends on something else
+                if aura == AURA_DAMAGE_DONE:
+                    if misc[0] & 1 or not misc[0] & 0x7E:
+                        continue
+                    mods.append(("d", aura, amount, misc[0]))
+                elif aura != 30 or misc[0] == SKILL_DEFENSE:
+                    spells_too = 1 if aura == 290 and re.search(r"\bspells?\b", description, re.I) else 0
+                    mods.append(("s", aura, amount, misc[0], misc[1], spells_too))
+                continue
+            if aura not in MODIFIER_AURAS or not class_set:
+                continue
+            op = int(num(e["EffectMiscValue"].split(",")[0]))
+            if op not in TALENT_OPS:
+                continue
+            mask = [unsigned(v) for v in e["EffectSpellClassMask"].split(",")]
+            if not any(mask):
+                continue
+            mods.append((MODIFIER_AURAS[aura], op, num(e["EffectBasePointsF"]), class_set, *mask))
+        # Toughness names "armor from items" with two auras (142 and 466); count it once.
+        if any(m[0] == "s" and m[1] == 142 for m in mods):
+            mods = [m for m in mods if not (m[0] == "s" and m[1] == 466)]
+        if mods:
+            talents[int(spell_id)] = (max(1, max_ranks[d["ID"]]), mods)
+    return families, talents
+
+
+def build_timing(data: Data, families: dict, heads: dict) -> tuple[dict, dict]:
+    """casts: base cast time (ms) of spells talents can touch; periods: { duration, tick } (ms)
+    of spells whose first growing number is damage or healing over time."""
+    casts, periods = {}, {}
+    for sid in families:
+        ms = data.cast_ms(str(sid))
+        if ms > 0:
+            casts[sid] = int(ms)
+    for sid, (idx, _base, periodic, _level) in heads.items():
+        if periodic and idx:
+            e = data.effect(str(sid), idx)
+            period = num(e["EffectAuraPeriod"]) if e else 0
+            duration = data.spell_duration_ms(str(sid))
+            if period > 0 and duration > 0:
+                periods[sid] = (int(duration), int(period))
+    return casts, periods
+
+
+def write_lua(path: Path, build_id: str, spells: dict[int, str], strikes: dict[int, str],
+              heads: dict | None = None, families: dict | None = None, talents: dict | None = None,
+              casts: dict | None = None, periods: dict | None = None):
     lines = [
         "-- GENERATED by scripts/extract_spelldata.py from World of Warcraft game data",
         f"-- (client {build_id}). Do not edit by hand. Numeric facts (c) Blizzard Entertainment.",
@@ -647,6 +851,25 @@ def write_lua(path: Path, build_id: str, spells: dict[int, str], strikes: dict[i
         '-- "w+16" = weapon damage plus 16, "n+68" = the same at normalized weapon speed,',
         '-- "*1.5" = 150% weapon damage (also multiplies the fixed amounts before it).',
         '-- "a 0.45+48" = 45% of attack power plus 48 ("ra": ranged); "k 655" = 655 plus block value.',
+        '--',
+        '-- heads: the first number that grows, per spell: { effect index (0 unknown), its value at',
+        '-- zero bonus (false for a "min to max" pair), true when it is damage or healing over time,',
+        '-- and for numbers that grow with character level: growth per level, the spell\'s level, the',
+        '-- level the growth stops at (0: never) }.',
+        '-- families: { class set, mask words 1-4 }: which talents can touch the spell.',
+        '-- talents: [talent spell] = { ranks, { kind ("p" percent, "f" flat), operation, amount at',
+        '-- full rank, class set, mask words 1-4 }, ... }. Operations: 0 damage and healing, 22 over',
+        '-- time (both multiply the whole amount), 24 spell power share, 3/12/23 base amount of',
+        '-- effect 1/2/3, 8 base amount of every effect; 1 duration, 7 crit chance, 10 cast time,',
+        '-- 11 cooldown, 14 cost, 15 crit damage bonus (flat amounts in milliseconds, percent',
+        '-- points or power).',
+        '-- Also { "s", aura, amount, misc, misc 2, spells too } for talents that change a character',
+        '-- sheet number (block, parry, dodge, crit, hit, % of a stat, armor from items, attack',
+        '-- power, block value, regeneration while casting) and { "d", 79, amount, school mask } for',
+        '-- % damage of magic schools. Parts of a talent that depend on a weapon, form or event are',
+        '-- left out.',
+        '-- casts: base cast time in milliseconds. periods: { duration, time between ticks } in',
+        '-- milliseconds, for spells whose first growing number is over time.',
         "local _, ns = ...",
         "",
         "ns.SpellData = {",
@@ -658,6 +881,28 @@ def write_lua(path: Path, build_id: str, spells: dict[int, str], strikes: dict[i
     lines += ["\t},", "\tstrikes = {"]
     for sid in sorted(strikes):
         lines.append(f'\t\t[{sid}] = "{strikes[sid]}",')
+    lines += ["\t},", "\theads = {"]
+    for sid in sorted(heads or {}):
+        idx, base, periodic, level = heads[sid]
+        base_text = f"{base:.10g}" if base is not None else "false"
+        extra = f", {level[0]:.10g}, {level[1]}, {level[2]}" if level else ""
+        lines.append(f"\t\t[{sid}] = {{ {idx}, {base_text}, {'true' if periodic else 'false'}{extra} }},")
+    lines += ["\t},", "\tfamilies = {"]
+    for sid in sorted(families or {}):
+        lines.append(f"\t\t[{sid}] = {{ {', '.join(str(v) for v in families[sid])} }},")
+    lines += ["\t},", "\ttalents = {"]
+    for sid in sorted(talents or {}):
+        ranks, mods = talents[sid]
+        parts = []
+        for kind, op, amount, *rest in mods:
+            parts.append(f'{{ "{kind}", {op}, {amount:.10g}, {", ".join(str(v) for v in rest)} }}')
+        lines.append(f"\t\t[{sid}] = {{ {ranks}, {', '.join(parts)} }},")
+    lines += ["\t},", "\tcasts = {"]
+    for sid in sorted(casts or {}):
+        lines.append(f"\t\t[{sid}] = {casts[sid]},")
+    lines += ["\t},", "\tperiods = {"]
+    for sid in sorted(periods or {}):
+        lines.append(f"\t\t[{sid}] = {{ {periods[sid][0]}, {periods[sid][1]} }},")
     lines += ["\t},", "}", ""]
     path.write_text("\n".join(lines), encoding="utf-8", newline="\n")
 
@@ -672,9 +917,11 @@ def main(argv=None) -> int:
     data, spells, considered, reasons = build(args.folder)
     build_id = args.build or args.folder.name
     strikes = build_strikes(data, spells)
-    write_lua(args.out, build_id, spells, strikes)
-    print(f"{len(spells)} of {considered} scaling class spells and {len(strikes)} weapon strikes "
-          f"written to {args.out}")
+    families, talents = build_talents(data, spells)
+    casts, periods = build_timing(data, families, data.heads)
+    write_lua(args.out, build_id, spells, strikes, data.heads, families, talents, casts, periods)
+    print(f"{len(spells)} of {considered} scaling class spells, {len(strikes)} weapon strikes and "
+          f"{len(talents)} talents written to {args.out}")
     if args.report:
         for reason, count in sorted(reasons.items(), key=lambda kv: -kv[1]):
             print(f"  skipped {count:5d}: {reason}")

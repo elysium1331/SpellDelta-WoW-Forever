@@ -63,9 +63,13 @@ Changes in v4, from Ryan's in-game test (the Heal prediction matched his tooltip
   "1 + $AP * 15/100", Sinister Strike, Mortal Strike) need the extractor to read `$AP` and items'
   Strength/Agility/Attack Power. Required before release.
 - **Icons:** each row starts with the spell's icon at text height, then the name.
-- **Talents:** taken talents should already be in tooltip numbers (Ryan checks at his next level-up
-  with a new talent). If they are, a percentage talent also scales the gear's added bonus; the
-  addon will read that percentage per spell from its live number versus the game data's base value.
+- **Talents:** checked in game on 2026-11-17 (respec, priest 34, naked and with three items, Twin
+  Disciplines 1 and 3 points, Improved Power Word: Shield 1 and 3 points). Spell tooltips include
+  applied talents, never pending ones; item tooltips never include talents. The game's number is
+  floor((base x base talents + spell power x share) x whole talents). Talent operations in the
+  data (aura 108 EffectMiscValue): 0 and 22 multiply the whole amount, 3/12/23/8 only the base.
+  Which spells a talent touches comes from its class mask, not its wording (Twin Disciplines
+  boosts channeled Starshards and skips Power Word: Shield). Built in 0.5.0-alpha.1.
 - Fixed: effects that never grow with bonuses (Resurrection's "resurrect", buffs, dummies) are no
   longer read as scaling.
 
@@ -96,16 +100,16 @@ Revised phases (replace section 7's table):
 | 2. Alt-hover | Generated `SpellData.lua`, item bonus reader, pairing, Alt tooltip block, hint line; 6 spells by casts, icons. | Built (0.2.0-alpha.2); Heal matched in game |
 | 3. Character tab | SpellDelta tab on the character screen (v5): planned loadout in gear slots, bag picker per slot, spell and stat Delta, "What gear bonuses do" box, choosing the 6 hover spells (stat lines later). Learned spells at your current rank only; future ranks and talent-granted spells belong to the Talent tester. | Checked in game (0.3.0-alpha.2, level 34 priest) |
 | 3b. All classes | Attack-power abilities, weapon strikes, "What you get" stat lines (choosable for the Alt tooltip), attack-power groups (v6). | Built (0.4.0-alpha.5), in-game check pending |
-| 4. Talent effects | Talent tables are already exported (Trait*); talent modifiers on spell numbers, talent tooltip line. | |
+| 4. Talent effects | Talent modifiers on spell numbers (generated from SpellEffect, SpellClassOptions, Trait*); gear gains scaled by applied whole-amount talents; exact numbers rebuilt from the data and cut off like the game; Alt over a talent: pending points and next rank. Since alpha.2 also weapon strikes and finishers (whole-hit talents), and facts: cost, cast time (keeps haste), cooldown (from the spell's tooltip), crit chance from talents, duration (longer damage over time adds ticks). Only passive talents count (Inner Focus, Cold Blood are buttons). Since alpha.3 character-sheet talents (block, parry, dodge, crit, hit, defense, % of a stat, armor from items, attack power, block value, regeneration while casting) as "what you get" lines, % damage of magic schools (Darkness), crit damage. Left out: procs, and any part of a talent whose words name a weapon, form, stance or event (physical % damage needs a weapon type the exported data does not name). | Built (0.5.0-alpha.3), in-game check pending |
 | 5. Talent tester | As in 1d. | |
 | 6. Release | All classes labelled unverified, README, VALIDATION.md, release on Ryan's OK. | |
 
 Known limits of phase 2, with Ryan's notes (2026-11-16):
-- Talents already taken are in the live tooltip numbers, so gear predictions start from them. The
-  one gap: a percentage talent (for example +10% healing) also scales the bonus the new gear adds,
-  so that part of the change comes out up to the talent's percent too small. Fix candidate, not
-  waiting for phase 4: read each spell's own multiplier by comparing its live number with the game
-  data's base value plus coefficient times bonus.
+- Talents already taken are in the live tooltip numbers, so gear predictions start from them.
+  Since 0.5.0-alpha.1 a percentage talent that multiplies the whole amount (Twin Disciplines)
+  also scales the bonus the new gear adds, and the first number is rebuilt from the game data
+  and cut off like the game when the data matches what the game shows (otherwise rounded as
+  before; "min to max" pairs always so). Off by one is still possible in that fallback.
 - Since 0.4.0-alpha.1 every class's main numbers are modelled (attack power, weapon strikes,
   off-hand and both-hand strikes, attack-power shares, block value, health, avoidance). Rule
   (Ryan, 2026-11-16): an ability is in when gear changes its number, the same as a spell; it

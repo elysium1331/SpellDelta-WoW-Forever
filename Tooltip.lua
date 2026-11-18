@@ -57,6 +57,10 @@ function Tooltip.Compute(link)
 		local plan = Gear.Plan(hovered, equipped, Bags)
 		if plan then
 			local delta = ns.Body.Delta(plan.changes, equipped, Compat.Snapshot())
+			-- Applied talents: gear gains grow with whole-amount talents (Twin Disciplines).
+			if ns.Talents then
+				ns.Talents.Attach(delta, state.bonuses, Compat.GetPlayerLevel())
+			end
 			-- Rows that change, plus the ones the player chose even when they don't (+0 is an answer).
 			local chosen = {}
 			for _, key in ipairs(ns.db and ns.db.tracked or {}) do
@@ -132,6 +136,9 @@ end
 
 function Tooltip.ChangeText(row)
 	local sign = row.change >= 0 and "+" or "-"
+	if row.unit == "sec" then
+		return L.TIP_ROW_SEC:format(row.before, row.after, sign, math.abs(row.change))
+	end
 	if row.pct then
 		return L.TIP_ROW_PCT:format(row.before, row.after, sign, math.abs(row.change))
 	end

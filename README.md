@@ -7,7 +7,7 @@ SpellDelta answers one question: *what does this talent, or this item, change ab
 the spells I actually use?* It reads the game's own tooltip numbers for the spells on
 your action bars, so you see real numbers and no upgrade scores.
 
-**Status:** 0.4.0-alpha.5, phase 3 of the plan in [docs/PLAN.md](docs/PLAN.md).
+**Status:** 0.5.0-alpha.3, phase 4 of the plan in [docs/PLAN.md](docs/PLAN.md).
 Not released yet.
 
 SpellDelta is an unofficial community addon. Blizzard Entertainment did not make or
@@ -41,6 +41,31 @@ healing or attack power. Weapon strikes (Sinister Strike, Mortal Strike, Auto Sh
 show their average hit, worked out from your weapon and attack power with the game's own
 weapon formula; they only show when that formula matches the game's damage readout for
 what you wear. It shows numbers only; it never tells you whether to Need or Greed.
+
+Talents work the same way. Open the talent window and point at a talent: the tooltip
+shows "Hold Alt: spell changes". Hold Alt to see what the talent's next rank does to the
+spells on your bars, and, while you have added points without pressing Apply Changes yet,
+what those pending points do:
+
+```
+Points not applied yet - spells on your bars
+  Renew                211 to 217  (+6)
+Rank 4 of 5 - spells on your bars
+  Renew                217 to 219  (+2)
+```
+
+The game's spell tooltips only change after Apply Changes, so these are worked out from
+the game data. Item tooltips also count your applied talents: a talent like Twin
+Disciplines (+3% to instant spells) makes the staff's +34 spell power worth +35 on Renew,
+while Improved Power Word: Shield (+20%) only raises the shield's own amount, not what gear
+adds. Weapon strikes and finishers take their own talents too (Aggression, Opportunity), and
+talents that change a cost, cast time, cooldown, duration or crit chance show those as plain
+facts ("Mind Blast cooldown 8.0 to 7.5 sec"). Talents that change your character sheet show
+the same "what you get" lines as gear: Shield Specialization shows block chance, Mental
+Strength shows Intellect and the mana it brings, Toughness shows armor; Darkness raises your
+shadow spells' numbers. Talents that only add a chance for something to happen (procs), or
+that need a certain weapon, form or stance, are not shown: they can't be measured without
+that condition.
 
 To plan more than one item, open the character screen and pick the SpellDelta tab (the
 last side tab), or click SpellDelta in the minimap AddOns menu. Click a slot to choose from

@@ -123,7 +123,9 @@ local function OnPlayerLogin()
 		end
 	end
 	RegisterSlash()
+	ns.Talents.Refresh()
 	ns.Tooltip.Init()
+	ns.TalentTip.Init()
 	ns.CharacterTab.Init()
 	if not ns.db.altTipShown then
 		ns.db.altTipShown = true
@@ -167,6 +169,8 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, _, arg3)
 	elseif event == "PLAYER_LOGIN" then
 		OnPlayerLogin()
 	elseif event == "TRAIT_CONFIG_UPDATED" or event == "PLAYER_SPECIALIZATION_CHANGED" then
+		ns.Talents.Refresh()
+		ns.Tooltip.Invalidate()
 		Measure.InvalidateTalents()
 		Measure.Schedule(true)
 	elseif REMEASURE[event] and ns.db then

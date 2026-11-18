@@ -93,9 +93,13 @@ function Predict.Measured(spellID, values, delta, measured)
 	if not now then
 		return nil
 	end
-	local before = sum / (last - first + 1) + (m.fixed or 0) + m.share * now
-	return { var = m.var, before = before, after = before + m.share * (change or 0), measured = true,
-		points = m.points }
+	-- The tooltip part already carries the applied talents; the measured share gets them here
+	-- (Talents.Attach: Aggression on Eviscerate, Serrated Blades on Rupture).
+	local w = delta.whole and delta.whole(spellID, m.periodic) or 1
+	local own = sum / (last - first + 1) + (m.fixed or 0)
+	local before = own + m.share * now * w
+	return { var = m.var, before = before, after = before + m.share * (change or 0) * w, measured = true,
+		points = m.points, own = own, apPart = m.share * now, periodic = m.periodic }
 end
 
 -- The name a row shows: "Eviscerate (5 pts)*" for a measured finisher, else the spell's name.
@@ -126,13 +130,34 @@ function Predict.Spell(spellID, values, delta, data)
 		return nil, "count"
 	end
 	local after, pos, head = {}, 1, nil
+	-- Applied talents that multiply the whole amount also multiply what gear adds (Talents.Attach).
+	local scale = delta.scale and delta.scale(spellID) or 1
 	for _, slot in ipairs(slots) do
-		local grow = slot.var and slot.coef * Change(delta, slot.var) or 0
+		local change = slot.var and Change(delta, slot.var) or 0
+		local grow = slot.var and slot.coef * change * scale or 0
 		local sum, newSum = 0, 0
 		for k = 0, slot.n - 1 do
 			local v = values[pos + k]
 			after[pos + k] = v + grow
 			sum, newSum = sum + v, newSum + v + grow
+		end
+		-- The first growing number rebuilt from the game data, when it matches what the game shows:
+		-- then the new number is cut off the way the game does it (no rounding).
+		if slot.var and not head and slot.n == 1 and delta.value and delta.now then
+			local bonus
+			if type(slot.var) == "number" then
+				bonus = delta.now.d and delta.now.d[slot.var]
+			else
+				bonus = delta.now[slot.var]
+			end
+			local exact = type(bonus) == "number" and delta.value(spellID, slot.coef, bonus)
+			if exact and math.floor(exact + 1e-6) == values[pos] then
+				local target = delta.value(spellID, slot.coef, bonus + change)
+				if target then
+					after[pos] = math.floor(target + 1e-6)
+					newSum = after[pos]
+				end
+			end
 		end
 		if slot.var and not head then
 			head = { var = slot.var, before = sum / slot.n, after = newSum / slot.n }
@@ -172,7 +197,10 @@ function Predict.Rows(spells, delta, data, keepUnchanged)
 				before, after, kind, measured = ns.Body.Strike(code, delta)
 			end
 			if before then
-				p = { var = kind, before = before, after = after, strike = true, measured = measured }
+				-- Strikes are worked out without the ability's own talents; they join here.
+				local w = delta.whole and delta.whole(s.spellID) or 1
+				p = { var = kind, before = before * w, after = after * w, strike = true, measured = measured,
+					raw = before }
 			end
 		end
 		if not p then
@@ -184,7 +212,7 @@ function Predict.Rows(spells, delta, data, keepUnchanged)
 			local before, change = Predict.Round(p.before), Predict.Round(p.after - p.before)
 			local row = { spellID = s.spellID, name = s.name, key = s.name, var = p.var, before = before,
 				after = before + change, change = change, strike = p.strike, measured = p.measured,
-				points = p.points }
+				points = p.points, raw = p.raw, own = p.own, apPart = p.apPart, periodic = p.periodic }
 			-- Several ranks of one spell on the bars: keep the strongest.
 			local old = byName[s.name]
 			if not old or row.before > old.before then
