@@ -85,8 +85,8 @@ players' names are visible.
 
 ## Upload
 
-- File: `dist/Elysium_SpellDelta-0.5.0.zip` (95,166 bytes, same as the GitHub release; SHA-256
-  `7d79291ae3d4a118924635cc4a3e0c87f8765a252321b37997fc28ff15bd5e86`).
+- File: `dist/Elysium_SpellDelta-1.0.0.zip` (95,233 bytes, same as the GitHub release; SHA-256
+  `c7edaf25a4f8f64cbf6c979cab5cc055bdf69ddb33c99d7a40bb9fc7d3d86c3d`).
 - Release type: **Release**. Game version: Forever 1.60.1 only.
-- Changelog: paste the `## [0.5.0]` section of `CHANGELOG.md`.
+- Changelog: paste the `## [1.0.0]` and `## [0.5.0]` sections of `CHANGELOG.md`.
 - After approval: add the CurseForge URL to `README.md` and `## X-Curse-Project-ID:` to the TOC.

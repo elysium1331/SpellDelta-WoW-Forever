@@ -1,10 +1,10 @@
 # Distribution notes (prepared, not published)
 
-Nothing has been uploaded anywhere. Version covered: 0.5.0.
+Version covered: 1.0.0. Published on GitHub (releases v0.5.0 and v1.0.0); not yet on CurseForge.
 
 - **Public name:** [Elysium] SpellDelta (suggested CurseForge slug: `elysium-spelldelta`)
 - **Folder / TOC name:** `Elysium_SpellDelta`, `## Group: Elysium_SpellDelta`, `## Category: Elysium`
-- **Repository (planned, not created yet):** github.com/elysium1331/SpellDelta-WoW-Forever
+- **Repository:** github.com/elysium1331/SpellDelta-WoW-Forever (public)
 - **Short summary:** See what an item or a talent changes about the spells on your action bars.
 - **License:** MIT (code only; see THIRD_PARTY_NOTICES.md).
 - **Name check (2026-11-17):** no CurseForge project named SpellDelta found. Similar Forever

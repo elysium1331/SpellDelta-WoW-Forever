@@ -4,6 +4,12 @@ All notable user-facing changes. Format: [Keep a Changelog](https://keepachangel
 Versions follow [Semantic Versioning](https://semver.org/). The saved-data schema
 version is tracked separately (currently schema 1).
 
+## [1.0.0] - 2026-11-17
+
+Stable release. Same features and numbers as 0.5.0, which passed its in-game checks on WoW
+Forever 1.60.1 (build 70938). Other classes than priest are still not checked in game; see
+docs/VALIDATION.md.
+
 ## [0.5.0] - 2026-11-17
 
 First public release, for WoW Forever 1.60.1 (build 70938). Everything below from the

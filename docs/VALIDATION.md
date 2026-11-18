@@ -1,4 +1,6 @@
-# Validation report: [Elysium] SpellDelta 0.5.0
+# Validation report: [Elysium] SpellDelta 1.0.0
+
+1.0.0 has the same code as 0.5.0; everything below applies to both.
 
 Target client: **WoW Forever 1.60.1.70938, interface 16001.**
 
