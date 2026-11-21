@@ -654,8 +654,40 @@ function Talents.SetEntry(talentID, entryID)
 	entries[talentID] = entries[talentID] or entryID
 end
 
--- Share of the full amount at a rank, from the talent's own text for that rank ("by 3%" of
--- "by 5%"). nil when the text can't be matched (rank / ranks is used then).
+-- A rank's amount as a share of the data amount `full`, from the talent's own texts. The data
+-- amount is the top rank's for most talents (Twin Disciplines: 5 = 1% a rank, 5% at 5) but
+-- the first rank's for others (Improved Renew: 5 = 5% a rank, 15% at 3; Ryan, 2026-11-21:
+-- Renew 357 at rank 1, 374 at rank 2), so the number is looked for in the top rank's text,
+-- then in the first rank's. nil when neither text has it.
+function Talents.RankFraction(full, textMax, textRank, textFirst)
+	local Values = ns.SpellText.Values
+	local numsMax, numsRank = Values(textMax), Values(textRank)
+	if #numsRank ~= #numsMax then
+		return nil
+	end
+	local function Find(nums)
+		for i, v in ipairs(nums) do
+			if math.abs(v - full) < 0.01 then
+				return i
+			end
+		end
+		return nil
+	end
+	local i = Find(numsMax)
+	if not i and type(textFirst) == "string" then
+		local numsFirst = Values(textFirst)
+		if #numsFirst == #numsMax then
+			i = Find(numsFirst)
+		end
+	end
+	if i and numsRank[i] then
+		return numsRank[i] / full
+	end
+	return nil
+end
+
+-- Share of the data amount at a rank, from the talent's own text for that rank
+-- (Talents.RankFraction). nil when the text can't be matched (rank / ranks is used then).
 function Talents.Points(talentID, rank, entry)
 	local key = talentID .. ":" .. rank
 	if fractions[key] ~= nil then
@@ -668,16 +700,9 @@ function Talents.Points(talentID, rank, entry)
 	if entryID and full and full > 0 and ns.SpellText then
 		local okMax, textMax = Call(fn, entryID, entry[1])
 		local okRank, textRank = Call(fn, entryID, rank)
+		local okFirst, textFirst = Call(fn, entryID, 1)
 		if okMax and okRank and type(textMax) == "string" and type(textRank) == "string" then
-			local numsMax, numsRank = ns.SpellText.Values(textMax), ns.SpellText.Values(textRank)
-			for i, v in ipairs(numsMax) do
-				if math.abs(v - full) < 0.01 then
-					if numsRank[i] and #numsRank == #numsMax then
-						frac = numsRank[i] / v
-					end
-					break
-				end
-			end
+			frac = Talents.RankFraction(full, textMax, textRank, okFirst and textFirst or nil) or false
 		end
 	end
 	fractions[key] = frac

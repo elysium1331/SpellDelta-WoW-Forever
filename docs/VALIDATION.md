@@ -1,7 +1,8 @@
-# Validation report: [Elysium] SpellDelta 1.0.1
+# Validation report: [Elysium] SpellDelta 1.0.2
 
-1.0.1 changes only which lines the Alt item tooltip shows (stat changes always show below the
-spells); the numbers are worked out as in 1.0.0 and 0.5.0, so everything below applies to all three.
+1.0.1 changed which lines the Alt item tooltip shows (stat changes always show below the
+spells). 1.0.2 fixed how much each rank of some talents gives (Improved Renew). Everything
+else is worked out as in 1.0.0 and 0.5.0, so the rest of this report applies to all of them.
 
 Target client: **WoW Forever 1.60.1.70938, interface 16001.**
 
@@ -22,11 +23,12 @@ data and unit tests; this report says so wherever it applies.
 | 2026-11-17 | Split healing/damage item (Death Speaker Robes: healing +20, damage +7) | Renew +20, Heal +17, Lesser Heal +14, Flash Heal +9, Prayer of Healing +6, Power Word: Shield +2. |
 | 2026-11-17 | Enchant lines on items ("Enchanted: Stamina +4", two-part healing enchants) | "Everything seems to be working as intended." |
 | 2026-11-18 | Dagger quest reward plus off-hand replacing a staff: more spell power, 11 less stamina and intellect, 6+ spells changed | 1.0.0 hid the health and mana loss behind the 6-spell limit. 1.0.1 shows them below the spells; Ryan confirmed it in game. |
+| 2026-11-21 | Improved Renew, rank 0 to 1 to 2 to 3 (5% a rank, whole Renew incl. spell power) | The game went 340 to 357 to 374. 1.0.1 predicted about a third of each step (+6 instead of +17): it read the data's 5% as the top rank's. 1.0.2 reads each rank's % from the talent's text and showed 374 to 391 for rank 3, as the game's math gives. |
 
 Fixes made because of these checks: talent % on gear gains, floor instead of rounding,
 spell growth per level (Power Word: Shield), only passive talents count, split
 healing/damage wording, enchant lines, decimal hit and crit wording, stat losses hidden by
-the 6-spell limit (1.0.1).
+the 6-spell limit (1.0.1), talents whose data holds the first rank's amount (1.0.2).
 
 ## 2. Not checked in game
 
@@ -53,7 +55,7 @@ resistances.
 | Check | Command | Result |
 |---|---|---|
 | Lua 5.1 syntax and no stray globals, all TOC files | `python scripts/check.py` | Pass (19 files) |
-| Unit tests, including the in-game numbers above replayed (talents, gear, item wordings, enchants) | `python scripts/check.py` | 114/114 pass |
+| Unit tests, including the in-game numbers above replayed (talents, gear, item wordings, enchants) | `python scripts/check.py` | 115/115 pass |
 | Source and zip validation | `python scripts/package.py` | Pass |
 
 ## 4. Quick check before each release

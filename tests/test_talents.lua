@@ -285,6 +285,35 @@ H.test("talents: cast time keeps the player's haste", function()
 	H.near(rows[1].after, 2.0 * 2174 / 2500, 1e-9)
 end)
 
+H.test("talents: a rank's amount from its text, when the data holds the first rank's amount", function()
+	local IMP_RENEW = 14908
+	local text = "Increases the amount healed by your Renew spell by %d%%."
+	H.eq(ns.SpellData.talents[IMP_RENEW][2][3], 5, "the data holds 5")
+	-- Improved Renew: 5% a rank, the top rank's text says 15%.
+	H.near(Talents.RankFraction(5, text:format(15), text:format(10), text:format(5)), 2, 1e-9)
+	H.near(Talents.RankFraction(5, text:format(15), text:format(15), text:format(5)), 3, 1e-9)
+	-- Twin Disciplines: the data holds the top rank's 5%.
+	H.near(Talents.RankFraction(5, text:format(5), text:format(3), text:format(1)), 0.6, 1e-9)
+	H.eq(Talents.RankFraction(5, text:format(15), text:format(10), text:format(6)), nil, "unmatched")
+	-- Ryan's Renew, 2026-11-21: 357 at rank 1, the game showed 374 at rank 2.
+	local function points(talentID, rank)
+		if talentID == IMP_RENEW then
+			return Talents.RankFraction(5, text:format(15), text:format(5 * rank), text:format(5))
+		end
+		return Points(talentID, rank)
+	end
+	local spells = { { spellID = RENEW, name = "Renew", values = { 357, 15 } } }
+	local ctx = { bonuses = Bonuses(40), level = 40, applied = { [IMP_RENEW] = 1 }, points = points }
+	local rows = Talents.Rows(spells, { [IMP_RENEW] = 1 }, { [IMP_RENEW] = 2 }, ctx)
+	H.eq(rows[1].before, 357)
+	H.eq(rows[1].after, 374)
+	-- Taking rank 1 from none: +5%, not a third of it (Ryan saw far more than SpellDelta said).
+	ctx.applied = {}
+	rows = Talents.Rows({ { spellID = RENEW, name = "Renew", values = { 340, 15 } } }, {}, { [IMP_RENEW] = 1 }, ctx)
+	H.eq(rows[1].after, 357)
+	H.eq(rows[1].change, 17)
+end)
+
 H.test("talents: buttons like Inner Focus are not counted as lasting talents", function()
 	H.eq(ns.SpellData.talents[14751], nil)
 	H.truthy(ns.SpellData.talents[IMP_MIND_BLAST])

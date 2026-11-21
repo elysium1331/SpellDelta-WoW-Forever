@@ -4,6 +4,14 @@ All notable user-facing changes. Format: [Keep a Changelog](https://keepachangel
 Versions follow [Semantic Versioning](https://semver.org/). The saved-data schema
 version is tracked separately (currently schema 1).
 
+## [1.0.2] - 2026-11-21
+
+### Fixed
+- Talents whose amount grows by the same step each rank (Improved Renew: 5%, 10%, 15%) were
+  read as if the first rank's amount were the top rank's, so Alt over the talent showed about
+  a third of the real change (Renew +6 instead of +17). The amount for each rank now comes from
+  the talent's own text for that rank. Gear gains on those spells use the right % too.
+
 ## [1.0.1] - 2026-11-18
 
 ### Fixed

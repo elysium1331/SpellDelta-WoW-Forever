@@ -1,6 +1,6 @@
 # Distribution notes
 
-Version covered: 1.0.1. Published on GitHub (releases v0.5.0, v1.0.0 and v1.0.1) and on CurseForge
+Version covered: 1.0.2. Published on GitHub (releases v0.5.0, v1.0.0, v1.0.1 and v1.0.2) and on CurseForge
 (https://www.curseforge.com/wow/addons/elysium-spelldelta, project ID 1813861, approved 2026-11-18).
 
 - **Public name:** [Elysium] SpellDelta (suggested CurseForge slug: `elysium-spelldelta`)
