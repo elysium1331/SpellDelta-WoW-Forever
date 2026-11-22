@@ -110,19 +110,27 @@ end
 Body.DERIVED_ORDER = { "health", "mana", "ap", "rap", "crit", "spellCrit", "armor", "reduction", "defense",
 	"dodge", "parry", "block", "blockValue" }
 
-function Body.Derive(snap, sd)
+-- talentPct: the applied talents' percent effects (Talents.Stats: str..spi, armorItems, ap, rap,
+-- blockValue). The game multiplies what gear adds by them (Mental Strength: an item's +11
+-- Intellect is 12.1 at 10%), so item changes get them; nil for changes that already include them.
+function Body.Derive(snap, sd, talentPct)
 	local out = {}
 	if not snap then
 		return out
 	end
 	sd = sd or {}
+	talentPct = talentPct or {}
+	local function P(key)
+		return 1 + (tonumber(talentPct[key]) or 0) / 100
+	end
 	local st, fn = snap.stats or {}, snap.fn or {}
 	local function line(key, now, change, pct)
 		if now and change then
 			out[key] = { now = now, plan = now + change, change = change, pct = pct }
 		end
 	end
-	local dStr, dAgi, dSta, dInt = Sum(sd, "str"), Sum(sd, "agi"), Sum(sd, "sta"), Sum(sd, "int")
+	local dStr, dAgi = Sum(sd, "str") * P("str"), Sum(sd, "agi") * P("agi")
+	local dSta, dInt = Sum(sd, "sta") * P("sta"), Sum(sd, "int") * P("int")
 
 	if st.sta and fn.hpPerSta then
 		local brk = fn.staBreak or 20
@@ -142,12 +150,12 @@ function Body.Derive(snap, sd)
 	if fromStr and fromAgi then
 		-- "Attack power in Cat, Bear..." on druid weapons only counts while in such a form.
 		local feral = snap.feral and Sum(sd, "feralap") or 0
-		line("ap", snap.ap, fromStr + fromAgi + Sum(sd, "ap") + feral)
+		line("ap", snap.ap, (fromStr + fromAgi + Sum(sd, "ap") + feral) * P("ap"))
 	end
 	if snap.class == "HUNTER" or snap.ranged then
 		local rStr, rAgi = Worth(fn.rapFor, 1, st.str, dStr), Worth(fn.rapFor, 2, st.agi, dAgi)
 		if rStr and rAgi then
-			line("rap", snap.rap, rStr + rAgi + Sum(sd, "ap", "rap"))
+			line("rap", snap.rap, (rStr + rAgi + Sum(sd, "ap", "rap")) * P("rap"))
 		end
 	end
 	local critAgi = Worth(fn.critFor, 2, st.agi, dAgi)
@@ -160,7 +168,7 @@ function Body.Derive(snap, sd)
 			line("spellCrit", snap.spellCrit, critInt * 100 + Sum(sd, "spellcrit"), true)
 		end
 	end
-	local dArmor = Sum(sd, "armor") + Body.ARMOR_PER_AGI * dAgi
+	local dArmor = Sum(sd, "armor") * P("armorItems") + Body.ARMOR_PER_AGI * dAgi
 	line("armor", snap.armor, dArmor)
 	if snap.armor and fn.armorEff then
 		local a, b = fn.armorEff(snap.armor), fn.armorEff(snap.armor + dArmor)
@@ -183,7 +191,7 @@ function Body.Derive(snap, sd)
 		line("block", snap.block, Sum(sd, "blockpct") + fromDef, true)
 		if st.str then
 			local fromStrBlock = math.floor((st.str + dStr) / Body.BLOCK_PER_STR) - math.floor(st.str / Body.BLOCK_PER_STR)
-			line("blockValue", snap.blockValue, Sum(sd, "block") + fromStrBlock)
+			line("blockValue", snap.blockValue, (Sum(sd, "block") + fromStrBlock) * P("blockValue"))
 		end
 	end
 	return out
@@ -270,11 +278,12 @@ end
 
 -- The full change a plan makes, for Predict.Rows: spell bonuses (d, h), attack power (ap, rap),
 -- stat lines (derived) and the weapon sides for strikes. snap may be nil (spell bonuses only).
-function Body.Delta(plan, worn, snap)
+-- talentPct: the applied talents' percent effects (Talents.AppliedStats), or nil.
+function Body.Delta(plan, worn, snap, talentPct)
 	local delta = Loadout.BonusDelta(plan, worn)
 	local sd = Loadout.StatDelta(plan, worn)
 	delta.stats = sd
-	delta.derived = Body.Derive(snap, sd)
+	delta.derived = Body.Derive(snap, sd, talentPct)
 	delta.ap = delta.derived.ap and delta.derived.ap.change or 0
 	delta.rap = delta.derived.rap and delta.derived.rap.change or 0
 	if snap then

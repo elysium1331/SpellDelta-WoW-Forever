@@ -7,7 +7,7 @@ SpellDelta answers one question: *what does this talent, or this item, change ab
 the spells I actually use?* It reads the game's own tooltip numbers for the spells on
 your action bars, so you see real numbers and no upgrade scores.
 
-**Status:** 1.0.2, stable. What was checked in game, and what was not,
+**Status:** 1.0.3, stable. What was checked in game, and what was not,
 is in [docs/VALIDATION.md](docs/VALIDATION.md); the plan is in [docs/PLAN.md](docs/PLAN.md).
 
 **Download:** [CurseForge](https://www.curseforge.com/wow/addons/elysium-spelldelta) or

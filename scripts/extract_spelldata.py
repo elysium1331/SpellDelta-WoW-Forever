@@ -150,6 +150,19 @@ class Data:
                 self.levels.setdefault(r["SpellID"], (int(num(r["BaseLevel"])), int(num(r["MaxLevel"]))))
         self.trait_definitions = load(folder, "TraitDefinition")
         self.trait_entries = load(folder, "TraitNodeEntry")
+        # The amount of each talent effect at each rank: TraitDefinitionEffectPoints names a
+        # curve per effect, CurvePoint holds (rank, amount) points. The spell's own amount is
+        # sometimes the first rank's (Improved Renew 5 = 5/10/15) and sometimes the top rank's
+        # (Twin Disciplines 5 = 1..5), so only the curve says.
+        curves: dict[str, list[tuple[float, float]]] = {}
+        for r in load(folder, "CurvePoint"):
+            x, y = r["Pos"].split(",", 1)
+            curves.setdefault(r["CurveID"], []).append((num(x), num(y)))
+        self.rank_curves: dict[str, dict[str, list[float]]] = {}
+        for r in load(folder, "TraitDefinitionEffectPoints"):
+            points = sorted(curves.get(r["CurveID"], []))
+            if points:
+                self.rank_curves.setdefault(r["TraitDefinitionID"], {})[r["EffectIndex"]] = [y for _x, y in points]
         skill_lines = {r["ID"]: r for r in load(folder, "SkillLine")}
         self.class_spells = set()
         self.skill_line_name: dict[str, str] = {}
@@ -775,6 +788,7 @@ def build_talents(data: Data, spells: dict[int, str]) -> tuple[dict, dict]:
             continue
         description = data.spell.get(spell_id, {}).get("Description_lang", "")
         mods = []
+        indices = []  # the effect index of each mod, for its rank amounts
         for index in sorted(data.effects.get(spell_id, {})):
             e = data.effects[spell_id][index]
             aura = int(num(e["EffectAura"]))
@@ -794,9 +808,11 @@ def build_talents(data: Data, spells: dict[int, str]) -> tuple[dict, dict]:
                     if misc[0] & 1 or not misc[0] & 0x7E:
                         continue
                     mods.append(("d", aura, amount, misc[0]))
+                    indices.append(index)
                 elif aura != 30 or misc[0] == SKILL_DEFENSE:
                     spells_too = 1 if aura == 290 and re.search(r"\bspells?\b", description, re.I) else 0
                     mods.append(("s", aura, amount, misc[0], misc[1], spells_too))
+                    indices.append(index)
                 continue
             if aura not in MODIFIER_AURAS or not class_set:
                 continue
@@ -807,11 +823,23 @@ def build_talents(data: Data, spells: dict[int, str]) -> tuple[dict, dict]:
             if not any(mask):
                 continue
             mods.append((MODIFIER_AURAS[aura], op, num(e["EffectBasePointsF"]), class_set, *mask))
+            indices.append(index)
         # Toughness names "armor from items" with two auras (142 and 466); count it once.
         if any(m[0] == "s" and m[1] == 142 for m in mods):
-            mods = [m for m in mods if not (m[0] == "s" and m[1] == 466)]
+            keep = [i for i, m in enumerate(mods) if not (m[0] == "s" and m[1] == 466)]
+            mods, indices = [mods[i] for i in keep], [indices[i] for i in keep]
         if mods:
-            talents[int(spell_id)] = (max(1, max_ranks[d["ID"]]), mods)
+            curves = data.rank_curves.get(d["ID"], {})
+            # SpellEffect indices count from 1 here (effect 1, 2, 3); the curves count from 0.
+            amounts = [curves.get(str(index - 1)) for index in indices]
+            # A part with no curve of its own (Improved Serpent Sting's direct damage) grows like
+            # a part that has one, scaled by their amounts.
+            known = [(m[2], a) for m, a in zip(mods, amounts) if a and m[2]]
+            if known:
+                base, curve = known[0]
+                amounts = [a if a or not m[2] else [v * m[2] / base for v in curve]
+                           for m, a in zip(mods, amounts)]
+            talents[int(spell_id)] = (max(1, max_ranks[d["ID"]]), mods, amounts)
     return families, talents
 
 
@@ -857,8 +885,8 @@ def write_lua(path: Path, build_id: str, spells: dict[int, str], strikes: dict[i
         '-- and for numbers that grow with character level: growth per level, the spell\'s level, the',
         '-- level the growth stops at (0: never) }.',
         '-- families: { class set, mask words 1-4 }: which talents can touch the spell.',
-        '-- talents: [talent spell] = { ranks, { kind ("p" percent, "f" flat), operation, amount at',
-        '-- full rank, class set, mask words 1-4 }, ... }. Operations: 0 damage and healing, 22 over',
+        '-- talents: [talent spell] = { ranks, { kind ("p" percent, "f" flat), operation, the spell\'s',
+        '-- own amount (one rank\'s or all ranks\', see rankAmounts), class set, mask words 1-4 }, ... }. Operations: 0 damage and healing, 22 over',
         '-- time (both multiply the whole amount), 24 spell power share, 3/12/23 base amount of',
         '-- effect 1/2/3, 8 base amount of every effect; 1 duration, 7 crit chance, 10 cast time,',
         '-- 11 cooldown, 14 cost, 15 crit damage bonus (flat amounts in milliseconds, percent',
@@ -868,6 +896,9 @@ def write_lua(path: Path, build_id: str, spells: dict[int, str], strikes: dict[i
         '-- power, block value, regeneration while casting) and { "d", 79, amount, school mask } for',
         '-- % damage of magic schools. Parts of a talent that depend on a weapon, form or event are',
         '-- left out.',
+        '-- rankAmounts: [talent spell] = { [position of the part in its talents entry, from 2] =',
+        '-- { amount at rank 1, rank 2, ... } }, from the game\'s rank curves. A part without one',
+        '-- uses its amount above x rank / ranks.',
         '-- casts: base cast time in milliseconds. periods: { duration, time between ticks } in',
         '-- milliseconds, for spells whose first growing number is over time.',
         "local _, ns = ...",
@@ -892,11 +923,18 @@ def write_lua(path: Path, build_id: str, spells: dict[int, str], strikes: dict[i
         lines.append(f"\t\t[{sid}] = {{ {', '.join(str(v) for v in families[sid])} }},")
     lines += ["\t},", "\ttalents = {"]
     for sid in sorted(talents or {}):
-        ranks, mods = talents[sid]
+        ranks, mods, _amounts = talents[sid]
         parts = []
         for kind, op, amount, *rest in mods:
             parts.append(f'{{ "{kind}", {op}, {amount:.10g}, {", ".join(str(v) for v in rest)} }}')
         lines.append(f"\t\t[{sid}] = {{ {ranks}, {', '.join(parts)} }},")
+    lines += ["\t},", "\trankAmounts = {"]
+    for sid in sorted(talents or {}):
+        amounts = talents[sid][2]
+        parts = [f"[{pos}] = {{ {', '.join(f'{v:.10g}' for v in vals)} }}"
+                 for pos, vals in enumerate(amounts, start=2) if vals]
+        if parts:
+            lines.append(f"\t\t[{sid}] = {{ {', '.join(parts)} }},")
     lines += ["\t},", "\tcasts = {"]
     for sid in sorted(casts or {}):
         lines.append(f"\t\t[{sid}] = {casts[sid]},")

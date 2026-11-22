@@ -12,11 +12,9 @@ local Talents, Predict = ns.Talents, ns.Predict
 local RENEW, PAIN, STARSHARDS, SHIELD, HEAL = 6077, 2767, 19302, 6065, 6064
 local TWIN, IMP_SHIELD = 1225132, 14748
 local LEVEL = 34
--- Improved Power Word: Shield's own text: 7% at rank 1, 20% at rank 3.
-local function Points(talentID, rank)
-	if talentID == IMP_SHIELD then
-		return ({ 7, 13, 20 })[rank] / 20
-	end
+-- Rank amounts come from the game's rank curves in SpellData (Improved Power Word: Shield
+-- 7/14/20%); the talent text is only a fallback for talents without one.
+local function Points()
 	return nil
 end
 
@@ -215,8 +213,10 @@ local AGGRESSION, OPPORTUNITY, IMP_MIND_BLAST, IMP_PAIN, MENTAL_AGILITY = 18427,
 local SINISTER, BACKSTAB, EVISCERATE, MIND_BLAST = 11294, 8721, 2098, 8104
 
 H.test("talents: strikes and finishers take the ability's own talents", function()
-	H.near(Talents.Whole(SINISTER, { [AGGRESSION] = 3 }), 1.02, 1e-9)
-	H.near(Talents.Whole(BACKSTAB, { [OPPORTUNITY] = 5 }), 1.10, 1e-9)
+	-- The game's rank curves: Aggression 5/10/15%, Opportunity 4..20% (its spell says 2 and 10).
+	H.near(Talents.Whole(SINISTER, { [AGGRESSION] = 3 }), 1.15, 1e-9)
+	H.near(Talents.Whole(SINISTER, { [AGGRESSION] = 1 }), 1.05, 1e-9)
+	H.near(Talents.Whole(BACKSTAB, { [OPPORTUNITY] = 5 }), 1.20, 1e-9)
 	H.near(Talents.Whole(BACKSTAB, { [AGGRESSION] = 3 }), 1, 1e-9)
 	local others = {
 		{ spellID = SINISTER, name = "Sinister Strike", key = "Sinister Strike", raw = 100 },
@@ -226,10 +226,11 @@ H.test("talents: strikes and finishers take the ability's own talents", function
 	}
 	local rows = Talents.OtherRows(others, {}, { [AGGRESSION] = 3 }, { applied = {} })
 	H.eq(#rows, 2)
-	H.eq(rows[1].name, "Eviscerate") -- 80 -> 82 (+2) before Sinister Strike 100 -> 102 by name
-	H.eq(rows[1].after, 82)
-	H.eq(rows[2].after, 102)
-	H.eq(rows[1].points, 5)
+	H.eq(rows[1].name, "Sinister Strike") -- 100 -> 115 (+15) before Eviscerate 80 -> 92 (+12)
+	H.eq(rows[1].after, 115)
+	H.eq(rows[2].name, "Eviscerate")
+	H.eq(rows[2].after, 92)
+	H.eq(rows[2].points, 5)
 	-- With Aggression already applied, the finisher's own tooltip part has it; only new ranks count.
 	rows = Talents.OtherRows({ others[2] }, { [AGGRESSION] = 3 }, { [AGGRESSION] = 3 }, { applied = { [AGGRESSION] = 3 } })
 	H.eq(#rows, 0)
@@ -283,6 +284,29 @@ H.test("talents: cast time keeps the player's haste", function()
 	H.eq(#rows, 1)
 	H.near(rows[1].before, 2.174, 1e-9)
 	H.near(rows[1].after, 2.0 * 2174 / 2500, 1e-9)
+end)
+
+H.test("talents: each rank's amount comes from the game's rank curve", function()
+	local IMP_RENEW = 14908
+	H.eq(Talents.Amount(ns.SpellData, IMP_RENEW, 2, ns.SpellData.talents[IMP_RENEW][2], 2, 2 / 3), 10)
+	H.eq(Talents.Amount(ns.SpellData, IMP_SHIELD, 2, ns.SpellData.talents[IMP_SHIELD][2], 2, 2 / 3), 14)
+	H.eq(Talents.Amount(ns.SpellData, TWIN, 2, ns.SpellData.talents[TWIN][2], 3, 3 / 5), 3)
+	H.eq(Talents.Amount(ns.SpellData, 11070, 2, ns.SpellData.talents[11070][2], 5, 1), -500,
+		"Improved Frostbolt: 0.1 sec a rank; its spell says -100")
+	-- Every talent with more than one rank has a curve for every part.
+	for talentID, entry in pairs(ns.SpellData.talents) do
+		if entry[1] > 1 then
+			local curves = ns.SpellData.rankAmounts[talentID]
+			H.truthy(curves, "rank curve for " .. talentID)
+			for i = 2, #entry do
+				-- At least one amount per rank (Deadliness's ranged part has a 5-step curve for 2 ranks).
+				H.truthy(curves[i] and #curves[i] >= entry[1], "ranks of part " .. i .. " of " .. talentID)
+			end
+		end
+	end
+	-- In-game numbers, 2026-11-17: Improved Power Word: Shield 300 -> 321 (rank 1) -> 360 (rank 3).
+	H.eq(Shown(SHIELD, 0.1, 0, { [IMP_SHIELD] = 1 }), 321)
+	H.eq(Shown(SHIELD, 0.1, 0, { [IMP_SHIELD] = 3 }), 360)
 end)
 
 H.test("talents: a rank's amount from its text, when the data holds the first rank's amount", function()
@@ -355,8 +379,8 @@ end
 H.test("talents: Mental Strength shows Intellect and the mana it brings", function()
 	local rows = StatByName(Talents.StatRows({}, { [MENTAL_STRENGTH] = 5 }, { snap = SNAP, applied = {} }))
 	H.eq(rows["Intellect"].before, 80)
-	H.eq(rows["Intellect"].after, 92)
-	H.eq(rows["Mana"].after, 1672 + 180)
+	H.eq(rows["Intellect"].after, 88, "2% a rank: the spell says 15, the game's curve 2..10")
+	H.eq(rows["Mana"].after, 1672 + 120)
 end)
 
 H.test("talents: block chance, armor from items, and already-applied ranks", function()
@@ -364,11 +388,11 @@ H.test("talents: block chance, armor from items, and already-applied ranks", fun
 		{ snap = SNAP, applied = {}, itemsArmor = 100 }))
 	H.near(rows["Block chance"].after, 10, 1e-9)
 	H.eq(rows["Armor"].after, 115)
-	-- Mental Strength already applied: the shown Intellect has it; the next rank adds 3% of 80/1.12.
+	-- Mental Strength already applied: the shown Intellect has it; the next rank adds 2% of 108/1.08.
 	rows = StatByName(Talents.StatRows({ [MENTAL_STRENGTH] = 4 }, { [MENTAL_STRENGTH] = 5 },
-		{ snap = { stats = { int = 92 } }, applied = { [MENTAL_STRENGTH] = 4 } }))
-	H.eq(rows["Intellect"].before, 92)
-	H.eq(rows["Intellect"].after, 94) -- 92 / 1.12 x 1.15 = 94.5
+		{ snap = { stats = { int = 108 } }, applied = { [MENTAL_STRENGTH] = 4 } }))
+	H.eq(rows["Intellect"].before, 108)
+	H.eq(rows["Intellect"].after, 110) -- 108 / 1.08 x 1.10
 end)
 
 H.test("talents: crit damage for weapon attacks and spells", function()
@@ -376,5 +400,5 @@ H.test("talents: crit damage for weapon attacks and spells", function()
 	local rows = Talents.FactRows(spells, {}, { [LETHALITY] = 2 }, { applied = {} }, function() return {} end)
 	H.eq(rows[1].name, ns.L.FACT_CRIT_DAMAGE:format("Sinister Strike"))
 	H.near(rows[1].before, 200, 1e-9)
-	H.near(rows[1].after, 206, 1e-9)
+	H.near(rows[1].after, 220, 1e-9, "Lethality 10/20%; its spell says 6")
 end)

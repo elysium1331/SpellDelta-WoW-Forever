@@ -56,7 +56,8 @@ function Tooltip.Compute(link)
 		equipped = Equipped()
 		local plan = Gear.Plan(hovered, equipped, Bags)
 		if plan then
-			local delta = ns.Body.Delta(plan.changes, equipped, Compat.Snapshot())
+			local delta = ns.Body.Delta(plan.changes, equipped, Compat.Snapshot(),
+				ns.Talents and ns.Talents.AppliedStats())
 			-- Applied talents: gear gains grow with whole-amount talents (Twin Disciplines).
 			if ns.Talents then
 				ns.Talents.Attach(delta, state.bonuses, Compat.GetPlayerLevel())

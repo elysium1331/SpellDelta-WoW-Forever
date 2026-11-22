@@ -85,11 +85,12 @@ players' names are visible.
 
 ## Upload
 
-- Latest file: `dist/Elysium_SpellDelta-1.0.2.zip` (96,112 bytes, same as the GitHub release;
-  SHA-256 `f00d8c3ebc5a75b1dfae37f5fa048d96a669f18cf0fb3063109b1cfa8d65357a`). Before it: 1.0.1
+- Latest file: `dist/Elysium_SpellDelta-1.0.3.zip` (98,674 bytes, same as the GitHub release;
+  SHA-256 `906e4d06f6a5fd66cd34a19c5f88d1ba7a04c0925f351e2859c92f3d37cdcc73`). Before it: 1.0.2
+  (96,112 bytes, SHA-256 `f00d8c3ebc5a75b1dfae37f5fa048d96a669f18cf0fb3063109b1cfa8d65357a`), 1.0.1
   (95,701 bytes, SHA-256 `adfd03be904613298b6345c2516c45a494beca3a2fd21713414d8c2502f7f099`). First upload was
   1.0.0 (95,233 bytes, SHA-256 `c7edaf25a4f8f64cbf6c979cab5cc055bdf69ddb33c99d7a40bb9fc7d3d86c3d`).
 - Release type: **Release**. Game version: Forever 1.60.1 only.
-- Changelog: paste the newest section of `CHANGELOG.md` (for 1.0.2: `## [1.0.2]`).
+- Changelog: paste the newest section of `CHANGELOG.md` (for 1.0.3: `## [1.0.3]`).
 - Approved 2026-11-18: https://www.curseforge.com/wow/addons/elysium-spelldelta, project ID
   1813861 (in `README.md` and the TOC as `## X-Curse-Project-ID:`).

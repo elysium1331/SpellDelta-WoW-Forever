@@ -76,7 +76,7 @@ function Tab.Build(ctx)
 		lines[#lines + 1] = line
 	end
 	local state, tracked = ctx.state, ctx.tracked or {}
-	local delta = ns.Body.Delta(ctx.plan, ctx.worn, ctx.snap)
+	local delta = ns.Body.Delta(ctx.plan, ctx.worn, ctx.snap, ns.Talents and ns.Talents.AppliedStats())
 	local trackedSet = {}
 	for _, key in ipairs(tracked) do
 		trackedSet[key] = true

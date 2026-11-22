@@ -486,7 +486,8 @@ Source tables (names as wow.export shows them): `SpellName`, `Spell` (descriptio
 `SpellMisc` (school, cast time), `SpellCastTimes`, `SpellClassOptions` (family and mask),
 `SpellEffect` (effect type, aura, base points, coefficient, which stat is modified, effect mask),
 `SpellPower` (cost), `SkillLineAbility` (which spells belong to which class), `TraitDefinition` and
-`TraitNodeEntry` (talent to spell), and `ItemEffect` (item to "Equip:" spell).
+`TraitNodeEntry` (talent to spell), `TraitDefinitionEffectPoints` and `CurvePoint` (each talent
+rank's amount; added 2026-11-21, see docs/TALENT_AUDIT.md), and `ItemEffect` (item to "Equip:" spell).
 
 Size estimate: roughly 300-700 KB of Lua. If loading is slow, the file is split per class and only
 your class (plus the shared item table) is loaded.

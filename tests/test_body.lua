@@ -143,6 +143,18 @@ H.test("body: a chosen stat line can be picked for item tooltips", function()
 	H.eq(#picked, #rows, "no row twice")
 end)
 
+H.test("body: % stat talents multiply what an item adds", function()
+	local snap = { stats = { int = 100, sta = 100, agi = 50 }, mana = 1000, health = 1000, armor = 1000,
+		fn = { manaPerInt = 15, hpPerSta = 10 } }
+	-- Mental Strength 5/5 (10% Intellect): +11 Intellect on an item is 12.1.
+	local d = Body.Derive(snap, { int = 11, sta = 11 }, { int = 10, sta = 0 })
+	H.near(d.mana.change, 11 * 1.1 * 15, 1e-9)
+	H.near(d.health.change, 110, 1e-9, "no Stamina talent: plain")
+	-- Toughness (armor from items +10%): an item's +100 armor is 110.
+	H.near(Body.Derive(snap, { armor = 100 }, { armorItems = 10 }).armor.change, 110, 1e-9)
+	H.near(Body.Derive(snap, { armor = 100 }).armor.change, 100, 1e-9, "without talents")
+end)
+
 H.test("body: an item that raises six spells still shows the stamina and intellect it costs", function()
 	-- Ryan's dagger (2026-11-18): more spell power, 11 less stamina and intellect.
 	local d = Body.Derive(Warrior(), { sta = -11 })

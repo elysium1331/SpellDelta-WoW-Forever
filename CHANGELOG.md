@@ -4,6 +4,19 @@ All notable user-facing changes. Format: [Keep a Changelog](https://keepachangel
 Versions follow [Semantic Versioning](https://semver.org/). The saved-data schema
 version is tracked separately (currently schema 1).
 
+## [1.0.3] - 2026-11-21
+
+### Fixed
+- Talent ranks for every class now use the game's own amount for each rank. 1.0.2 still had
+  67 talent effects wrong across all classes, for example Spiritual Healing (3/7/10%, was read as
+  up to 2%), Mental Strength (2% a rank, was 3%), Aggression (5/10/15%, was up to 2%) and the
+  cast time talents (Improved Frostbolt -0.1 sec a rank, was -0.02). The full list is in
+  docs/TALENT_AUDIT.md. Item tooltips use the same numbers, so spell gains from gear on spells
+  with such talents (Spiritual Healing, Aggression...) are fixed too.
+- Item stat lines now count your % stat talents, as the game does: with Mental Strength 5/5,
+  an item's +11 Intellect gives 12.1 Intellect worth of mana; Toughness raises the armor an
+  item adds; % attack power and block value talents likewise.
+
 ## [1.0.2] - 2026-11-21
 
 ### Fixed

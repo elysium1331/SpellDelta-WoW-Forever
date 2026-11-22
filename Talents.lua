@@ -64,6 +64,18 @@ local function Fraction(talentID, rank, entry, points)
 	return math.min(rank, entry[1]) / entry[1]
 end
 
+-- A talent part's amount at a rank: the game's own rank curve (SpellData.rankAmounts) when
+-- there is one, else the part's amount x Fraction. i: the part's position in the talent entry.
+local function Amount(data, talentID, i, mod, rank, frac)
+	local curve = data.rankAmounts and data.rankAmounts[talentID]
+	curve = curve and curve[i]
+	if curve and #curve > 0 then
+		return curve[math.max(1, math.min(rank, #curve))]
+	end
+	return mod[3] * frac
+end
+Talents.Amount = Amount
+
 local NO_HEAD = { 0, false, false }
 local HeadSchool
 
@@ -122,10 +134,10 @@ function Talents.Factors(spellID, ranks, data, points, periodic)
 				-- those schools, the whole number.
 				local school = mod[1] == "d" and HeadSchool(spellID, data)
 				if school and Band(mod[4], school) ~= 0 then
-					f.whole, f.touched = f.whole * (1 + mod[3] * frac / 100), true
+					f.whole, f.touched = f.whole * (1 + Amount(data, talentID, i, mod, rank, frac) / 100), true
 				end
 				if Matches(mod, fam) then
-					local amount, op, pct = mod[3] * frac, mod[2], mod[1] == "p"
+					local amount, op, pct = Amount(data, talentID, i, mod, rank, frac), mod[2], mod[1] == "p"
 					local idx = head[1]
 					if op == 0 or (op == 22 and head[3]) then
 						if pct then
@@ -440,7 +452,7 @@ function Talents.Stats(ranks, data, points)
 			for i = 2, #entry do
 				local mod = entry[i]
 				if mod[1] == "s" then
-					local aura, amount = mod[2], mod[3] * frac
+					local aura, amount = mod[2], Amount(data, talentID, i, mod, rank, frac)
 					if aura == 137 then
 						for bitValue, key in pairs(STAT_KEYS) do
 							if Band(mod[5], bitValue) ~= 0 then
@@ -639,6 +651,15 @@ end
 
 function Talents.Applied()
 	return applied
+end
+
+-- The applied talents' character-sheet effects (Talents.Stats), for item stat changes; nil
+-- until the talents can be read.
+function Talents.AppliedStats()
+	if not applied then
+		Talents.Refresh()
+	end
+	return applied and Talents.Stats(applied, nil, Talents.Points) or nil
 end
 
 function Talents.Current()
